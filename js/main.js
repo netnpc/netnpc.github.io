@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261030215429';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261030215429';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261030215429';
-import { HUD } from './ui.js?v=20261030215429';
-import { Input } from './input.js?v=20261030215429';
-import { Sfx } from './audio.js?v=20261030215429';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030215429';
+import * as THREE from '../vendor/three.module.min.js?v=20261030221517';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261030221517';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261030221517';
+import { HUD } from './ui.js?v=20261030221517';
+import { Input } from './input.js?v=20261030221517';
+import { Sfx } from './audio.js?v=20261030221517';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030221517';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -131,8 +131,6 @@ class Game {
     // 菜单相机对准地图中心
     this.camera.far = 200;
     this.camera.updateProjectionMatrix();
-    const mn = $('mapName');
-    if (mn) mn.textContent = m.name;
   }
 
   initWeaponView() {
@@ -250,51 +248,44 @@ class Game {
     $('touch').classList.toggle('hidden', !touch);
   }
 
-  /** 构建地图选择卡片 */
+  /** 构建地图下拉菜单 */
   buildMapPicker() {
-    const list = $('mapList');
-    if (!list) return;
-    const swatchColors = {
-      depot: 'linear-gradient(150deg,#5d7f96,#8a7a58)',
-      harbor: 'linear-gradient(150deg,#7f5a44,#3d5a68)',
-      foundry: 'linear-gradient(150deg,#8a6a4a,#4a4e56)',
-    };
-    list.innerHTML = '';
+    const sel = $('mapSelect');
+    if (!sel) return;
+    sel.innerHTML = '';
     for (const m of MAPS) {
-      const b = document.createElement('button');
-      b.className = 'mapCard' + (m.id === this.settings.map ? ' on' : '');
-      b.dataset.map = m.id;
-      b.innerHTML = `<span class="swatch" style="background:${swatchColors[m.id] || '#666'}"><i></i><i></i><i></i></span>
-        <span class="mtext"><span class="mname">${m.name}</span><span class="mdesc">${m.desc}</span></span>
-        <span class="mtick">✓</span>`;
-      b.onclick = () => this.pickMap(m.id);
-      list.appendChild(b);
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.name;
+      sel.appendChild(o);
     }
-    const cur = getMap(this.settings.map);
-    const mn = $('mapName');
-    if (mn) mn.textContent = cur.name;
+    sel.value = this.settings.map;
+    this.updateMapDesc();
+    // change 事件在移动端最可靠；input 作为兜底
+    sel.addEventListener('change', () => this.pickMap(sel.value));
   }
 
-  /** 菜单里切换地图：即时重建世界，让背景预览也能看到新图 */
+  updateMapDesc() {
+    const m = getMap(this.settings.map);
+    const d = $('mapDesc');
+    if (d) d.textContent = m.desc;
+  }
+
+  /** 切换地图：即时重建世界，让背景预览也能看到新图 */
   pickMap(id) {
+    if (!MAPS.some((m) => m.id === id)) id = MAPS[0].id;
+    const sel = $('mapSelect');
+    if (sel && sel.value !== id) sel.value = id;
     if (id === this.settings.map && this.world && this.world.mapId === id) {
-      // 已经在这张图，仅刷新选中态
-      this.refreshMapCards(id);
+      this.updateMapDesc();
       return;
     }
-    this.refreshMapCards(id);
+    this.settings.map = id;
     this.loadMap(id);
+    this.updateMapDesc();
     // 菜单相机复位
     this._menuT = 0;
     this.showMenuStats();
-  }
-
-  refreshMapCards(id) {
-    const list = $('mapList');
-    if (!list) return;
-    for (const el of list.children) {
-      el.classList.toggle('on', el.dataset.map === id);
-    }
   }
 
   showMenuStats() {

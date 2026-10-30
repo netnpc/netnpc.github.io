@@ -96,10 +96,10 @@ export class Input {
 
   bindTouch() {
     const stickZone = document.getElementById('stickZone');
-    // 触屏灵敏度系数：竖屏时视野纵向更"窄"，需要更高的补偿，否则上下看很吃力
+    // 触屏灵敏度系数：由 syncTouchSens() 按屏幕尺寸调整
     this._touchBase = 0.0052;
 
-    // ---- 摇杆（仅左下触发区） ----
+    // ---- 摇杆（仅左下触发区，用 Touch 事件） ----
     stickZone.addEventListener('touchstart', (e) => {
       if (!this.enabled) return;
       e.preventDefault();
@@ -117,43 +117,24 @@ export class Input {
       this.updateStick(t.clientX, t.clientY);
     }, { passive: false });
 
-    // ---- 视角滑动：全局监听，任意位置（除摇杆/按钮）都可拖动转身与俯仰 ----
-    const onStart = (e) => {
-      if (!this.enabled) return;
-      for (const t of e.changedTouches) {
-        if (t.identifier === this.stickId) continue;
-        // 落在按钮上的触摸交给按钮自己处理
-        if (this._isUI(t.clientX, t.clientY)) continue;
-        if (this.lookId === null) {
-          this.lookId = t.identifier;
-          this.lookLX = t.clientX;
-          this.lookLY = t.clientY;
-        }
-      }
-    };
-    const onMove = (e) => {
+    // ---- 视角滑动（Pointer Events：兼容性最好，iOS13+/Android 全支持） ----
+    if (window.PointerEvent) {
+      this._bindLookPointer();
+    } else {
+      this._bindLookTouch();
+    }
+
+    // 摇杆的 move/end 也要在全局跟踪（手指可能滑出摇杆区）
+    const stickMove = (e) => {
       if (!this.enabled) return;
       for (const t of e.changedTouches) {
         if (t.identifier === this.stickId) {
           e.preventDefault();
           this.updateStick(t.clientX, t.clientY);
-        } else if (t.identifier === this.lookId) {
-          e.preventDefault();
-          const dx = t.clientX - this.lookLX;
-          const dy = t.clientY - this.lookLY;
-          this.lookLX = t.clientX;
-          this.lookLY = t.clientY;
-          // 单帧跳跃过大（跨帧丢事件）时钳制，避免视角瞬间甩飞
-          const cap = 140;
-          const cd = Math.max(-cap, Math.min(cap, dx));
-          const cdy = Math.max(-cap, Math.min(cap, dy));
-          const s = this._touchBase * this.sens;
-          this.lookDX += cd * s;
-          this.lookDY += cdy * s;
         }
       }
     };
-    const onEnd = (e) => {
+    const stickEnd = (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier === this.stickId) {
           this.stickId = null;
@@ -161,18 +142,11 @@ export class Input {
           if (this.stickBase) this.stickBase.classList.remove('active');
           if (this.stickKnob) this.stickKnob.style.transform = 'translate(0,0)';
         }
-        if (t.identifier === this.lookId) this.lookId = null;
       }
     };
-    // window + document 双绑，兼容部分 WebView 不冒泡到 window 的情况
-    window.addEventListener('touchstart', onStart, { passive: false });
-    document.addEventListener('touchstart', onStart, { passive: false });
-    window.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onEnd);
-    window.addEventListener('touchcancel', onEnd);
-    document.addEventListener('touchend', onEnd);
-    document.addEventListener('touchcancel', onEnd);
+    document.addEventListener('touchmove', stickMove, { passive: false });
+    document.addEventListener('touchend', stickEnd);
+    document.addEventListener('touchcancel', stickEnd);
 
     // 开火按钮
     const fireOn = (e) => { e.preventDefault(); e.stopPropagation(); if (this.enabled) this.firing = true; };
@@ -194,6 +168,84 @@ export class Input {
     bindBtn('btnReload', () => { this.wantReload = true; });
     bindBtn('btnJump', () => { this.wantJump = true; });
     bindBtn('btnSwitch', () => { this.wantSwitch = true; });
+  }
+
+  /** 视角拖拽：Pointer Events 实现 */
+  _bindLookPointer() {
+    this.lookPtr = null;
+    this.lookPX = 0; this.lookPY = 0;
+
+    document.addEventListener('pointerdown', (e) => {
+      if (!this.enabled || e.pointerType !== 'touch') return;
+      // 摇杆手指与按钮手指不作为视角
+      const zone = document.getElementById('stickZone');
+      if (zone && zone.contains(e.target)) return;
+      if (this._isUI(e.clientX, e.clientY)) return;
+      if (this.lookPtr === null) {
+        this.lookPtr = e.pointerId;
+        this.lookPX = e.clientX; this.lookPY = e.clientY;
+      }
+    }, { passive: true });
+
+    document.addEventListener('pointermove', (e) => {
+      if (!this.enabled || e.pointerId !== this.lookPtr) return;
+      const dx = e.clientX - this.lookPX;
+      const dy = e.clientY - this.lookPY;
+      this.lookPX = e.clientX; this.lookPY = e.clientY;
+      this._accumLook(dx, dy);
+    }, { passive: true });
+
+    const up = (e) => { if (e.pointerId === this.lookPtr) this.lookPtr = null; };
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+    // 页面切后台时释放
+    window.addEventListener('blur', () => { this.lookPtr = null; });
+  }
+
+  /** 视角拖拽：无 PointerEvent 时的 Touch 事件兜底 */
+  _bindLookTouch() {
+    this._touchLookId = null;
+    document.addEventListener('touchstart', (e) => {
+      if (!this.enabled) return;
+      const zone = document.getElementById('stickZone');
+      for (const t of e.changedTouches) {
+        if (zone && zone.contains(t.target)) continue;
+        if (this._isUI(t.clientX, t.clientY)) continue;
+        if (this._touchLookId === null) {
+          this._touchLookId = t.identifier;
+          this.lookLX = t.clientX; this.lookLY = t.clientY;
+        }
+      }
+    }, { passive: true });
+    document.addEventListener('touchmove', (e) => {
+      if (!this.enabled) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === this._touchLookId) {
+          e.preventDefault();
+          const dx = t.clientX - this.lookLX;
+          const dy = t.clientY - this.lookLY;
+          this.lookLX = t.clientX; this.lookLY = t.clientY;
+          this._accumLook(dx, dy);
+        }
+      }
+    }, { passive: false });
+    const end = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this._touchLookId) this._touchLookId = null;
+      }
+    };
+    document.addEventListener('touchend', end);
+    document.addEventListener('touchcancel', end);
+  }
+
+  /** 视角增量统一入口：钳制 + 灵敏度 */
+  _accumLook(dx, dy) {
+    const cap = 160;
+    const cd = Math.max(-cap, Math.min(cap, dx));
+    const cdy = Math.max(-cap, Math.min(cap, dy));
+    const s = this._touchBase * this.sens;
+    this.lookDX += cd * s;
+    this.lookDY += cdy * s;
   }
 
   // 判断屏幕坐标是否落在可交互按钮上（这些位置的触摸不再用于转身）

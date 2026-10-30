@@ -2,7 +2,7 @@
 
 A CS-style first-person shooter that runs entirely in the browser — no download, no plugins. Works on both desktop and mobile.
 
-**Live:** https://www.monoai.com · **Contact:** cybrpnk@qq.com
+**Live:** https://netnpc.github.io · **Contact:** cybrpnk@qq.com
 
 ## Features
 
