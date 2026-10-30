@@ -265,9 +265,9 @@ export class Enemy {
 
     // 分层外观：0 普通（红棕）/ 1 老兵（深蓝）/ 2 精英（黑+红外骨骼镜）
     const looks = [
-      { color: 0xb84040, skin: 0xd0a07a, opt: {} },
-      { color: 0x3f5a7a, skin: 0xc99a70, opt: {} },
-      { color: 0x2f3339, skin: 0xb98a66, opt: { elite: true, visorColor: 0xff2a10 } },
+      { color: 0x7a5c34, skin: 0xd0a07a, opt: {} },                                  // 沙棕军装（Terran 风）
+      { color: 0x2e3a4a, skin: 0xc99a70, opt: {} },                                  // 深蓝灰（Urban 风）
+      { color: 0x26282c, skin: 0xb98a66, opt: { elite: true, visorColor: 0xff2a10 } }, // 黑装 + 红镜（GSG9 风）
     ];
     const lk = looks[Math.min(tier, looks.length - 1)];
     this.group = buildSoldier(lk.color, lk.skin, lk.opt);

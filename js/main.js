@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261030235741';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261030235741';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261030235741';
-import { HUD } from './ui.js?v=20261030235741';
-import { Input } from './input.js?v=20261030235741';
-import { Sfx } from './audio.js?v=20261030235741';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030235741';
+import * as THREE from '../vendor/three.module.min.js?v=20261031002332';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031002332';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031002332';
+import { HUD } from './ui.js?v=20261031002332';
+import { Input } from './input.js?v=20261031002332';
+import { Sfx } from './audio.js?v=20261031002332';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031002332';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -174,7 +174,7 @@ class Game {
       grp.userData = { core, halo, spark, light, coreS, haloS };
       return grp;
     };
-    this.flashG = mkMuzzle(new THREE.Vector3(0, 0.022, -0.7), 0.42, 0.9, 1.6);
+    this.flashG = mkMuzzle(new THREE.Vector3(0, 0.022, -0.7), 0.34, 0.76, 1.6);
     this.rifle.add(this.flashG);
     this.flashG2 = mkMuzzle(new THREE.Vector3(0, 0.012, -0.3), 0.36, 0.76, 1.2);
     this.pistol.add(this.flashG2);
