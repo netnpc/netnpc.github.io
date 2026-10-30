@@ -442,11 +442,76 @@ function part(geo, material, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz
   return m;
 }
 
+// 迷彩布料材质（程序化迷彩纹理，按底色缓存）
+const _camoCache = new Map();
+function camoMat(hex, rough = 0.88) {
+  const key = `${hex}_${rough}`;
+  if (_camoCache.has(key)) return _camoCache.get(key);
+  const c = new THREE.Color(hex);
+  const size = 128, cv = cvs(size), ctx = cv.getContext('2d');
+  ctx.fillStyle = '#' + c.getHexString(); ctx.fillRect(0, 0, size, size);
+  const dark = c.clone().multiplyScalar(0.55).getHexString();
+  const mid = c.clone().multiplyScalar(0.78).getHexString();
+  const light = c.clone().offsetHSL(0.015, 0.04, 0.1).getHexString();
+  // 三层不规则迷彩斑块
+  [[dark, 26, 9, 22], [mid, 22, 7, 16], [light, 16, 5, 11]].forEach(([col, n, rMin, rMax]) => {
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = `#${col}`;
+      ctx.beginPath();
+      ctx.ellipse(Math.random() * size, Math.random() * size, rnd(rMin, rMax), rnd(rMin * 0.5, rMax * 0.7), rnd(0, 3), 0, 7);
+      ctx.fill();
+    }
+  });
+  // 布纹噪点
+  const d = ctx.getImageData(0, 0, size, size);
+  for (let i = 0; i < d.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 22;
+    d.data[i] += n; d.data[i + 1] += n; d.data[i + 2] += n;
+  }
+  ctx.putImageData(d, 0, 0);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1.6, 1.6);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: rough, metalness: 0.03 });
+  _camoCache.set(key, m);
+  return m;
+}
+
+// 圆角盒（用缩放球近似，做出柔和的躯干轮廓）
+function rBox(w, h, d, r = 0.55) {
+  const k = `r${w.toFixed(3)},${h.toFixed(3)},${d.toFixed(3)}`;
+  if (!_geoCache.has(k)) {
+    const g = new THREE.BoxGeometry(w, h, d, 2, 3, 2);
+    const pos = g.attributes.position;
+    const hw = w / 2 - r * 0.06, hh = h / 2 - r * 0.06, hd = d / 2 - r * 0.06;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      // 把顶点往内收，形成圆角
+      const nx = Math.max(-hw, Math.min(hw, v.x));
+      const ny = Math.max(-hh, Math.min(hh, v.y));
+      const nz = Math.max(-hd, Math.min(hd, v.z));
+      const dx = v.x - nx, dy = v.y - ny, dz = v.z - nz;
+      const len = Math.hypot(dx, dy, dz);
+      if (len > 1e-6) {
+        const k2 = r * 0.9 / r;
+        const s = 1 - 0.12 * r;
+        v.x = nx + dx * s; v.y = ny + dy * s; v.z = nz + dz * s;
+      }
+    }
+    pos.needsUpdate = true;
+    g.computeVertexNormals();
+    _geoCache.set(k, g);
+  }
+  return _geoCache.get(k);
+}
+
 /**
  * 构建敌方士兵模型。
  * @param {number} color  军装主色（不同精英等级换色）
  * @param {number} skin   肤色
- * @param {object} opt    { elite:boolean, helmet:'full'|'cap', visorColor }
+ * @param {object} opt    { elite:boolean, cap:boolean, visorColor }
  */
 export function buildSoldier(color = 0xb03a3a, skin = 0xd0a07a, opt = {}) {
   const elite = !!opt.elite;
@@ -455,17 +520,15 @@ export function buildSoldier(color = 0xb03a3a, skin = 0xd0a07a, opt = {}) {
   root.add(body);
 
   // ---- 材质 ----
-  const cloth = new THREE.MeshStandardMaterial({ color, roughness: 0.86, metalness: 0.04 });
-  const clothDark = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color).multiplyScalar(0.72).getHex(), roughness: 0.9, metalness: 0.04,
-  });
+  const cloth = camoMat(color, 0.9);                       // 迷彩外衣
+  const clothDark = camoMat(new THREE.Color(color).multiplyScalar(0.6).getHex(), 0.92); // 迷彩裤
   const pad = new THREE.MeshStandardMaterial({ color: 0x3b4048, roughness: 0.78, metalness: 0.22 });
   const vestM = new THREE.MeshStandardMaterial({ color: elite ? 0x2b2f36 : 0x3a3e45, roughness: 0.9, metalness: 0.1 });
   const webbing = new THREE.MeshStandardMaterial({ color: 0x4a4a3e, roughness: 0.95, metalness: 0.02 });
   const skinc = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.82, metalness: 0.02 });
-  const maskM = new THREE.MeshStandardMaterial({ color: 0x26262a, roughness: 0.88, metalness: 0.03 }); // 巴拉克拉法帽
-  const eyeM = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.6 }); // 眼睛
-  const soleM = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.98 }); // 鞋底
+  const maskM = new THREE.MeshStandardMaterial({ color: 0x26262a, roughness: 0.88, metalness: 0.03 });
+  const eyeM = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.6 });
+  const soleM = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.98 });
   const glass = new THREE.MeshStandardMaterial({
     color: opt.visorColor || (elite ? 0x8a2a1a : 0x2f4858),
     roughness: 0.08, metalness: 0.95, emissive: elite ? 0x5a0d04 : 0x000000, emissiveIntensity: elite ? 0.9 : 0,
@@ -477,90 +540,88 @@ export function buildSoldier(color = 0xb03a3a, skin = 0xd0a07a, opt = {}) {
     color: elite ? 0xd8a53a : 0xc9c4b4, roughness: 0.55, metalness: 0.45,
   });
 
-  // ---- 骨盆 / 腰带（CS 风格简洁款） ----
-  body.add(part(gBox(0.38, 0.19, 0.23), clothDark, 0, 0.88, 0));
-  body.add(part(gBox(0.4, 0.055, 0.25), leather, 0, 0.965, 0));            // 腰带
-  body.add(part(gBox(0.06, 0.05, 0.03), accentMat, 0, 0.965, -0.128));     // 皮带扣
-  // 腰侧弹匣包（CS 的 T 模型腰上有两个小包）
-  body.add(part(gBox(0.09, 0.11, 0.08), webbing, -0.2, 0.92, -0.05, 0, 0.2, 0));
-  body.add(part(gBox(0.09, 0.11, 0.08), webbing, 0.2, 0.92, -0.05, 0, -0.2, 0));
+  // ---- 骨盆 / 腰带 ----
+  body.add(part(rBox(0.31, 0.19, 0.21, 0.7), clothDark, 0, 0.9, 0));
+  body.add(part(gBox(0.335, 0.048, 0.225), leather, 0, 0.985, 0));
+  body.add(part(gBox(0.052, 0.042, 0.026), accentMat, 0, 0.985, -0.116));
+  body.add(part(rBox(0.08, 0.09, 0.065, 0.5), webbing, -0.17, 0.905, -0.04, 0, 0.2, 0));
+  body.add(part(rBox(0.08, 0.09, 0.065, 0.5), webbing, 0.17, 0.905, -0.04, 0, -0.2, 0));
 
-  // ---- 躯干（方正的夹克轮廓，贴近 CS 低模） ----
-  const torso = part(gBox(0.42, 0.26, 0.24), cloth, 0, 1.09, 0);
+  // ---- 躯干（圆润的人体轮廓：窄腰 → 宽胸 → 斜肩） ----
+  body.add(part(rBox(0.29, 0.2, 0.19, 0.7), cloth, 0, 1.1, 0));
+  const torso = part(rBox(0.34, 0.16, 0.21, 0.7), cloth, 0, 1.24, 0);
   body.add(torso);
-  const chest = part(gBox(0.47, 0.28, 0.26), cloth, 0, 1.34, 0);
+  const chest = part(rBox(0.375, 0.2, 0.225, 0.8), cloth, 0, 1.4, 0);
   body.add(chest);
-  // 夹克拉链（前胸一条竖线）
-  body.add(part(gBox(0.022, 0.5, 0.012), clothDark, 0, 1.26, -0.133));
-  // Phoenix 风格的斜挎布带
-  body.add(part(gBox(0.06, 0.44, 0.028), webbing, -0.1, 1.3, -0.136, 0, 0, 0.42));
+  body.add(part(gBox(0.018, 0.4, 0.01), clothDark, 0, 1.28, -0.108));
+  body.add(part(gBox(0.05, 0.36, 0.02), webbing, -0.08, 1.31, -0.11, 0, 0, 0.38));
 
-  // ---- 简易战术背心（CS 的 T 模型胸口黑色防弹衣） ----
-  const vest = part(gBox(0.44, 0.4, 0.28), vestM, 0, 1.26, 0);
+  // ---- 战术背心（贴身，窄于肩宽） ----
+  const vest = part(rBox(0.295, 0.3, 0.235, 0.55), vestM, 0, 1.315, 0);
   body.add(vest);
-  // 两个弹匣袋
-  for (const dx of [-0.1, 0.1]) {
-    body.add(part(gBox(0.11, 0.13, 0.055), pad, dx, 1.18, -0.165));
-    body.add(part(gBox(0.115, 0.03, 0.06), webbing, dx, 1.235, -0.167));
+  body.add(part(rBox(0.3, 0.05, 0.225, 0.5), vestM, 0, 1.468, -0.004));   // 肩带
+  for (const dx of [-0.08, 0.08]) {
+    body.add(part(rBox(0.078, 0.1, 0.04, 0.4), pad, dx, 1.215, -0.142));
+    body.add(part(gBox(0.085, 0.02, 0.045), webbing, dx, 1.262, -0.144));
   }
 
-  // ---- 颈部 / 头（CS 标志性巴拉克拉法帽） ----
-  body.add(part(gCyl(0.058, 0.07, 0.09, 8), maskM, 0, 1.52, 0));
-  const head = part(gSph(0.118, 14, 12), maskM, 0, 1.625, 0, 0, 0, 0, 1, 1.06, 1);
+  // ---- 颈 / 头 ----
+  body.add(part(gCyl(0.048, 0.058, 0.08, 10), maskM, 0, 1.55, 0));
+  const head = part(gSph(0.104, 16, 14), maskM, 0, 1.655, 0, 0, 0, 0, 0.94, 1.1, 0.98);
   body.add(head);
-  // 眼部露肤带（巴拉克拉法帽的开孔）
-  body.add(part(gBox(0.205, 0.048, 0.06), skinc, 0, 1.655, -0.088));
-  // 眼睛（两粒深色点）
-  body.add(part(gBox(0.028, 0.02, 0.012), eyeM, -0.045, 1.655, -0.122));
-  body.add(part(gBox(0.028, 0.02, 0.012), eyeM, 0.045, 1.655, -0.122));
-  // 帽子下缘（脖颈处的收口）
-  body.add(part(gBox(0.2, 0.03, 0.2), maskM, 0, 1.545, 0));
-  // 精英：加一顶简单头盔 + 红色护目镜（区分等级用）
-  let helmetBand = null;
+  // 眼部开孔
+  body.add(part(gBox(0.15, 0.04, 0.03), skinc, 0, 1.678, -0.093));
+  body.add(part(gBox(0.022, 0.015, 0.008), eyeM, -0.037, 1.678, -0.109));
+  body.add(part(gBox(0.022, 0.015, 0.008), eyeM, 0.037, 1.678, -0.109));
+  body.add(part(gCyl(0.06, 0.052, 0.03, 10), maskM, 0, 1.588, 0));
+  if (opt.cap && !elite) {
+    body.add(part(gSph(0.108, 12, 8), cloth, 0, 1.722, 0.012, 0, 0, 0, 1, 0.55, 1));
+    body.add(part(gBox(0.145, 0.011, 0.058), clothDark, 0, 1.718, -0.088, -0.12));
+  }
   if (elite) {
     const helmet = new THREE.Mesh(
-      new THREE.SphereGeometry(0.132, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), pad
+      new THREE.SphereGeometry(0.118, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), pad
     );
-    helmet.position.set(0, 1.645, 0);
-    helmet.scale.set(1.02, 1.05, 1.04);
+    helmet.position.set(0, 1.668, 0);
+    helmet.scale.set(1.0, 1.02, 1.03);
     body.add(helmet);
-    body.add(part(gBox(0.21, 0.045, 0.05), vestM, 0, 1.66, -0.1));            // 护目镜框
-    body.add(part(gBox(0.16, 0.03, 0.02), glass, 0, 1.662, -0.126));          // 红色镜片
+    body.add(part(gBox(0.19, 0.04, 0.048), vestM, 0, 1.68, -0.094));
+    body.add(part(gBox(0.14, 0.026, 0.016), glass, 0, 1.68, -0.116));
   }
 
-  // ---- 腿（简洁的军裤 + 靴子，CS 比例） ----
+  // ---- 腿（圆柱 + 球形膝盖，自然收放） ----
   const mkLeg = (sx) => {
     const g = new THREE.Group();
-    g.position.set(sx, 0.87, 0);
-    // 大腿
-    g.add(part(gBox(0.16, 0.42, 0.18), clothDark, 0, -0.21, 0));
-    // 小腿
-    g.add(part(gBox(0.145, 0.36, 0.165), clothDark, 0, -0.58, 0.008));
-    // 绑腿带
-    g.add(part(gBox(0.15, 0.035, 0.17), leather, 0, -0.5, 0.008));
-    // 靴子（鞋身 + 鞋头 + 鞋底）
-    g.add(part(gBox(0.15, 0.115, 0.19), leather, 0, -0.79, 0.005));
-    g.add(part(gBox(0.14, 0.085, 0.09), leather, 0, -0.805, -0.115));
-    g.add(part(gBox(0.158, 0.032, 0.3), soleM, 0, -0.852, -0.02));
+    g.position.set(sx, 0.9, 0);
+    g.add(part(gCyl(0.084, 0.068, 0.44, 12), clothDark, 0, -0.22, 0));
+    g.add(part(gSph(0.066, 10, 8), clothDark, 0, -0.45, 0.004, 0, 0, 0, 1, 1, 0.95));
+    g.add(part(gCyl(0.066, 0.052, 0.4, 12), clothDark, 0, -0.66, 0.008));
+    g.add(part(gCyl(0.069, 0.069, 0.028, 12), leather, 0, -0.52, 0.008));
+    g.add(part(rBox(0.115, 0.1, 0.17, 0.5), leather, 0, -0.9, 0.008));
+    g.add(part(rBox(0.1, 0.068, 0.085, 0.5), leather, 0, -0.914, -0.09));
+    g.add(part(gBox(0.118, 0.026, 0.265), soleM, 0, -0.95, -0.02));
     body.add(g);
     return g;
   };
-  const legL = mkLeg(-0.115), legR = mkLeg(0.115);
+  const legL = mkLeg(-0.093), legR = mkLeg(0.093);
 
-  // ---- 手臂（持枪姿态，简洁夹克袖 + 黑手套） ----
+  // ---- 手臂（上臂自然下垂外张，前臂前伸托枪） ----
   const mkArm = (sx) => {
     const g = new THREE.Group();
-    g.position.set(sx, 1.43, 0);
-    // 上臂
-    g.add(part(gBox(0.1, 0.28, 0.11), cloth, sx * 0.1, -0.14, -0.05, 0.55, 0, 0));
-    // 小臂（前伸指向 -Z）
-    g.add(part(gBox(0.09, 0.25, 0.1), clothDark, sx * 0.14, -0.325, -0.285, 1.42, 0, 0));
-    // 黑手套
-    g.add(part(gBox(0.076, 0.076, 0.095), leather, sx * 0.15, -0.35, -0.44));
+    g.position.set(sx * 0.175, 1.475, 0);
+    g.add(part(gSph(0.058, 10, 8), cloth, 0, -0.005, 0));
+    // 上臂：几乎垂直向下，仅略外张并前倾
+    g.add(part(gCyl(0.055, 0.048, 0.3, 12), cloth,
+      sx * 0.022, -0.16, -0.025, 0.3, 0, sx * -0.07));
+    g.add(part(gSph(0.048, 10, 8), clothDark, sx * 0.038, -0.305, -0.072));
+    // 前臂：向前伸，略向内收（托枪/握把）
+    g.add(part(gCyl(0.046, 0.038, 0.28, 12), clothDark,
+      sx * 0.045, -0.335, -0.225, 1.36, 0, sx * 0.05));
+    g.add(part(rBox(0.066, 0.072, 0.086, 0.6), leather, sx * 0.052, -0.35, -0.375));
     body.add(g);
     return g;
   };
-  const armL = mkArm(-0.275), armR = mkArm(0.275);
+  const armL = mkArm(-1), armR = mkArm(1);
 
   // ---- 步枪：CS 1.6 经典 AK-47（木护木 + 木托 + 弯弹匣） ----
   const woodM = new THREE.MeshStandardMaterial({ color: 0x7a4318, roughness: 0.6, metalness: 0.05 });
