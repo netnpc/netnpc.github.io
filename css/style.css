@@ -104,7 +104,11 @@ body.touchmode #hint{display:none}
 /* ---------- 移动端控制 ---------- */
 #touch{position:absolute;inset:0}
 /* 摇杆触发区：仅占左下角一块方区，右侧大面积为视角滑动区 */
-#stickZone{position:absolute;left:0;bottom:0;width:40%;height:44%;pointer-events:auto}
+#stickZone{position:absolute;left:0;bottom:0;width:46%;height:54%;pointer-events:auto}
+/* 常显摇杆提示：未触摸时半透明底座停在默认位置，让玩家知道左边可以走 */
+#stickBase{transition:opacity .18s}
+body.touchmode #stickBase.idle{opacity:.32}
+body.touchmode #stickBase.idle #stickKnob{background:rgba(255,255,255,.22)}
 #stickBase{position:absolute;left:calc(74px + env(safe-area-inset-left));bottom:calc(74px + env(safe-area-inset-bottom));width:118px;height:118px;margin:-59px 0 0 -59px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.16);opacity:0;transition:opacity .15s}
 #stickBase.active{opacity:1}
 #stickKnob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.5)}

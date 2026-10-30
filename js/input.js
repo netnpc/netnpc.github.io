@@ -98,6 +98,8 @@ export class Input {
     const stickZone = document.getElementById('stickZone');
     // 触屏灵敏度系数：由 syncTouchSens() 按屏幕尺寸调整
     this._touchBase = 0.0052;
+    // 常显摇杆提示
+    if (this.stickBase) this.stickBase.classList.add('idle');
 
     // ---- 摇杆（仅左下触发区，用 Touch 事件） ----
     stickZone.addEventListener('touchstart', (e) => {
@@ -108,6 +110,7 @@ export class Input {
       this.stickId = t.identifier;
       this.stickCX = t.clientX; this.stickCY = t.clientY;
       if (this.stickBase) {
+        this.stickBase.classList.remove('idle');
         this.stickBase.style.left = t.clientX + 'px';
         this.stickBase.style.top = t.clientY + 'px';
         this.stickBase.style.bottom = 'auto';
@@ -139,7 +142,15 @@ export class Input {
         if (t.identifier === this.stickId) {
           this.stickId = null;
           this.moveX = 0; this.moveY = 0;
-          if (this.stickBase) this.stickBase.classList.remove('active');
+          if (this.stickBase) {
+            this.stickBase.classList.remove('active');
+            this.stickBase.classList.add('idle');
+            // 回到默认位置
+            this.stickBase.style.left = '';
+            this.stickBase.style.top = '';
+            this.stickBase.style.bottom = '';
+            this.stickBase.style.margin = '';
+          }
           if (this.stickKnob) this.stickKnob.style.transform = 'translate(0,0)';
         }
       }

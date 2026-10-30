@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261030232523';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261030232523';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261030232523';
-import { HUD } from './ui.js?v=20261030232523';
-import { Input } from './input.js?v=20261030232523';
-import { Sfx } from './audio.js?v=20261030232523';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030232523';
+import * as THREE from '../vendor/three.module.min.js?v=20261030235741';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261030235741';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261030235741';
+import { HUD } from './ui.js?v=20261030235741';
+import { Input } from './input.js?v=20261030235741';
+import { Sfx } from './audio.js?v=20261030235741';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030235741';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -154,21 +154,35 @@ class Game {
     this.pistolRoot.visible = false;
     this.wScene.add(this.rifleRoot, this.pistolRoot);
 
-    // 枪口火光
-    const fMat = new THREE.SpriteMaterial({
-      map: this.flashTex, color: 0xffddaa, transparent: true,
+    // 枪口火光：核心亮斑 + 外层橙色光晕 + 点光源（照亮枪身与环境）
+    const mkFlashMat = (color, opacity = 1) => new THREE.SpriteMaterial({
+      map: this.flashTex, color, transparent: true, opacity,
       blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
     });
-    this.flash = new THREE.Sprite(fMat);
-    this.flash.scale.set(0.5, 0.5, 1);
-    this.flash.position.set(0, 0.022, -0.68);
-    this.flash.visible = false;
-    this.rifle.add(this.flash);
-    this.flash2 = new THREE.Sprite(fMat.clone());
-    this.flash2.scale.set(0.34, 0.34, 1);
-    this.flash2.position.set(0, 0.012, -0.26);
-    this.flash2.visible = false;
-    this.pistol.add(this.flash2);
+    const mkMuzzle = (pos, coreS, haloS, lightDist) => {
+      const grp = new THREE.Group();
+      const core = new THREE.Sprite(mkFlashMat(0xfff3c4, 1));
+      core.scale.set(coreS, coreS, 1);
+      const halo = new THREE.Sprite(mkFlashMat(0xff8a1e, 0.75));
+      halo.scale.set(haloS, haloS, 1);
+      const spark = new THREE.Sprite(mkFlashMat(0xffd070, 0.9));
+      spark.scale.set(coreS * 0.5, coreS * 2.1, 1);   // 纵向拉长的火花瓣
+      const light = new THREE.PointLight(0xffa544, 0, lightDist, 2);
+      grp.add(halo, core, spark, light);
+      grp.position.copy(pos);
+      grp.visible = false;
+      grp.userData = { core, halo, spark, light, coreS, haloS };
+      return grp;
+    };
+    this.flashG = mkMuzzle(new THREE.Vector3(0, 0.022, -0.7), 0.42, 0.9, 1.6);
+    this.rifle.add(this.flashG);
+    this.flashG2 = mkMuzzle(new THREE.Vector3(0, 0.012, -0.3), 0.36, 0.76, 1.2);
+    this.pistol.add(this.flashG2);
+    this.flash = this.flashG.userData.core;    // 兼容旧引用
+    this.flash2 = this.flashG2.userData.core;
+    // 环境枪口光（主场景，照亮前方地面/墙壁）
+    this.muzzleLight = new THREE.PointLight(0xffa544, 0, 14, 2);
+    this.scene.add(this.muzzleLight);
 
     // 后坐/摆动状态
     this.recoil = 0;
@@ -498,13 +512,22 @@ class Game {
     p.recoilPitch += def.recoil * (0.75 + Math.random() * 0.5);
     p.recoilYaw += (Math.random() - 0.5) * def.recoil * 0.9;
     this.recoil = Math.min(1, this.recoil + def.kick * 4);
-    this.flashT = 0.075;
-    this.flash.visible = p.weapon === 'rifle';
-    this.flash2.visible = p.weapon === 'pistol';
-    const fs = 0.42 + Math.random() * 0.22;
-    this.flash.scale.set(fs * 1.5, fs * 1.5, 1);
-    this.flash.material.rotation = Math.random() * 6;
-    this.flash2.scale.set(fs * 1.7, fs * 1.7, 1);
+    this.flashT = 0.13;
+    const isRifle = p.weapon === 'rifle';
+    const fg = isRifle ? this.flashG : this.flashG2;
+    const u = fg.userData;
+    fg.visible = true;
+    // 每发随机化：亮度/大小/旋转，避免每帧火光一模一样
+    const fs = 0.85 + Math.random() * 0.45;
+    u.core.scale.set(u.coreS * fs, u.coreS * fs, 1);
+    u.core.material.rotation = Math.random() * 6;
+    u.halo.scale.set(u.haloS * fs * (0.9 + Math.random() * 0.3), u.haloS * fs * (0.9 + Math.random() * 0.3), 1);
+    u.halo.material.rotation = Math.random() * 6;
+    u.halo.material.opacity = 0.65 + Math.random() * 0.3;
+    u.spark.scale.set(u.coreS * 0.4 * fs, u.coreS * (1.6 + Math.random() * 1.2) * fs, 1);
+    u.spark.material.rotation = Math.random() * 6;
+    u.light.intensity = isRifle ? 9 : 7;
+    this.muzzleLight.intensity = isRifle ? 26 : 18;
 
     this.hud.updateAmmo(p);
   }
@@ -683,6 +706,11 @@ class Game {
 
   updateWeaponView(dt) {
     const p = this.player;
+    // 旧版兼容：若 flashT 由旧路径设置过但闪烁组未显示，则直接打开
+    if (this.flashT > 0) {
+      const act = p.weapon === 'rifle' ? this.flashG : this.flashG2;
+      if (!act.visible && this.flashT > 0.12) act.visible = true;
+    }
     const root = p.weapon === 'rifle' ? this.rifleRoot : this.pistolRoot;
     const hs = Math.hypot(p.vel.x, p.vel.z);
     const bobX = Math.sin(p.bobT * 2.0) * 0.012 * Math.min(1, hs / 5);
@@ -711,7 +739,10 @@ class Game {
       ? { rest: [0.055, -0.125, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
       : { rest: [0.08, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
     const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
-    const sc = 0.56 + 0.44 * fit;
+    // 竖屏时相机水平视野窄：武器整体缩小 + 后移，避免枪身糊满下半屏
+    const portrait = this.camera.aspect < 1 ? 1 : 0;
+    const sc = (0.56 + 0.44 * fit) * (1 - 0.22 * portrait);
+    const dolly = 1 + 0.3 * portrait;   // 距离系数（更远）
     root.scale.setScalar(sc);
 
     const [rx0, ry0, rz0] = sights.rest;
@@ -719,13 +750,13 @@ class Game {
     const baseRY = sights.ry;   // 枪身略微内收，让右侧侧向细节可见
     const adsRY = 0;
 
-    let x = rx0 * fit + bobX * (1 - a);
-    let y = ry0 + bobY * (1 - a) - reloadDrop - this.switchT * 0.4;
-    let z = rz0 + this.recoil * 0.05 + this.switchT * 0.12;
+    let x = rx0 * fit * (1 - 0.3 * portrait) + bobX * (1 - a);
+    let y = ry0 * (1 - 0.08 * portrait) + bobY * (1 - a) - reloadDrop - this.switchT * 0.4;
+    let z = rz0 * dolly + this.recoil * 0.05 + this.switchT * 0.12;
 
     x += (ax0 * fit - x) * a;
     y += (ay0 - y) * a;
-    z += (az0 - z) * a;
+    z += (az0 * dolly - z) * a;
 
     root.position.set(x, y, z);
     const kick = this.recoil * 0.14;
@@ -733,10 +764,31 @@ class Game {
     root.rotation.z = 0.02 + reloadRoll * 0.5 + bobX * 1.4 * (1 - a) + this.recoil * 0.05;
     root.rotation.y = baseRY + (adsRY - baseRY) * a + reloadRoll * 0.25;
 
-    // 枪口火光
+    // 枪口火光：快速衰减（核心→光晕→熄灭），并同步点光源强度
     if (this.flashT > 0) {
       this.flashT -= dt;
-      if (this.flashT <= 0) { this.flash.visible = false; this.flash2.visible = false; }
+      const active = this.player.weapon === 'rifle' ? this.flashG : this.flashG2;
+      const k = Math.max(0, this.flashT / 0.13);
+      for (const fg of [this.flashG, this.flashG2]) {
+        const u = fg.userData;
+        if (fg !== active) { fg.visible = false; u.light.intensity = 0; continue; }
+        u.core.material.opacity = Math.min(1, k * 1.6);
+        u.halo.material.opacity = u.halo.material.opacity * Math.min(1, k * 1.3);
+        u.spark.material.opacity = k;
+        u.light.intensity = (this.player.weapon === 'rifle' ? 9 : 7) * k;
+      }
+      this.muzzleLight.intensity = (this.player.weapon === 'rifle' ? 26 : 18) * k;
+      if (this.flashT <= 0) {
+        this.flashG.visible = false; this.flashG2.visible = false;
+        this.flashG.userData.light.intensity = 0; this.flashG2.userData.light.intensity = 0;
+        this.muzzleLight.intensity = 0;
+      }
+    }
+    // 环境枪口光跟随相机（位于玩家前方约 0.6m）
+    if (this.muzzleLight.intensity > 0) {
+      const dir = new THREE.Vector3();
+      this.camera.getWorldDirection(dir);
+      this.muzzleLight.position.copy(this.camera.position).addScaledVector(dir, 0.7);
     }
   }
 
