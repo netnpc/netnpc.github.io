@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261030221517';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261030221517';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261030221517';
-import { HUD } from './ui.js?v=20261030221517';
-import { Input } from './input.js?v=20261030221517';
-import { Sfx } from './audio.js?v=20261030221517';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030221517';
+import * as THREE from '../vendor/three.module.min.js?v=20261030232523';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261030232523';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261030232523';
+import { HUD } from './ui.js?v=20261030232523';
+import { Input } from './input.js?v=20261030232523';
+import { Sfx } from './audio.js?v=20261030232523';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261030232523';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -147,10 +147,10 @@ class Game {
     this.pistolRoot = new THREE.Group();
     this.rifleRoot.add(this.rifle);
     this.pistolRoot.add(this.pistol);
-    this.rifleRoot.position.set(0.235, -0.235, -0.36);
-    this.pistolRoot.position.set(0.21, -0.21, -0.32);
-    this.rifleRoot.rotation.set(0.02, 0.05, 0.02);
-    this.pistolRoot.rotation.set(0.02, 0.05, 0.02);
+    this.rifleRoot.position.set(0.055, -0.125, -0.82);
+    this.pistolRoot.position.set(0.075, -0.125, -0.5);
+    this.rifleRoot.rotation.set(0.015, 0.15, 0.02);
+    this.pistolRoot.rotation.set(0.015, 0.2, 0.02);
     this.pistolRoot.visible = false;
     this.wScene.add(this.rifleRoot, this.pistolRoot);
 
@@ -161,12 +161,12 @@ class Game {
     });
     this.flash = new THREE.Sprite(fMat);
     this.flash.scale.set(0.5, 0.5, 1);
-    this.flash.position.set(0, 0.035, -0.66);
+    this.flash.position.set(0, 0.022, -0.68);
     this.flash.visible = false;
     this.rifle.add(this.flash);
     this.flash2 = new THREE.Sprite(fMat.clone());
-    this.flash2.scale.set(0.35, 0.35, 1);
-    this.flash2.position.set(0, 0.015, -0.22);
+    this.flash2.scale.set(0.34, 0.34, 1);
+    this.flash2.position.set(0, 0.012, -0.26);
     this.flash2.visible = false;
     this.pistol.add(this.flash2);
 
@@ -360,7 +360,7 @@ class Game {
     // 每波补充弹药
     if (n > 1) {
       this.player.ammo.rifle.reserve = Math.min(240, this.player.ammo.rifle.reserve + 90);
-      this.player.ammo.pistol.reserve = Math.min(120, this.player.ammo.pistol.reserve + 34);
+      this.player.ammo.pistol.reserve = Math.min(56, this.player.ammo.pistol.reserve + 21);
       this.player.armor = Math.min(100, this.player.armor + 25);
       this.player.hp = Math.min(100, this.player.hp + 20);
       this.hud.updateAmmo(this.player);
@@ -498,13 +498,13 @@ class Game {
     p.recoilPitch += def.recoil * (0.75 + Math.random() * 0.5);
     p.recoilYaw += (Math.random() - 0.5) * def.recoil * 0.9;
     this.recoil = Math.min(1, this.recoil + def.kick * 4);
-    this.flashT = 0.055;
+    this.flashT = 0.075;
     this.flash.visible = p.weapon === 'rifle';
     this.flash2.visible = p.weapon === 'pistol';
     const fs = 0.42 + Math.random() * 0.22;
-    this.flash.scale.set(fs, fs, 1);
+    this.flash.scale.set(fs * 1.5, fs * 1.5, 1);
     this.flash.material.rotation = Math.random() * 6;
-    this.flash2.scale.set(fs * 0.7, fs * 0.7, 1);
+    this.flash2.scale.set(fs * 1.7, fs * 1.7, 1);
 
     this.hud.updateAmmo(p);
   }
@@ -520,7 +520,7 @@ class Game {
     this.sfx.kill();
     // 掉落弹药
     const a = p.ammo[p.weapon];
-    a.reserve = Math.min(p.weapon === 'rifle' ? 240 : 120, a.reserve + (p.weapon === 'rifle' ? 12 : 8));
+    a.reserve = Math.min(p.weapon === 'rifle' ? 240 : 56, a.reserve + (p.weapon === 'rifle' ? 12 : 7));
     p.hp = Math.min(100, p.hp + 4);
     this.hud.updateAmmo(p);
     this.hud.updateVitals(p);
@@ -706,33 +706,31 @@ class Game {
       reloadRoll = curve * 0.55;
     }
 
-    // 竖屏（手机）时相机水平视野更窄：按宽高比整体缩放武器，避免占满屏幕
-    const ar = this.camera.aspect;
-    const fit = Math.min(1, Math.max(0.45, ar / 1.55));
-    const sc = 0.5 + 0.5 * fit;
+    // 两把枪的机瞄高度不同：AK 用照门，沙漠之鹰用套筒顶部肋条
+    const sights = p.weapon === 'rifle'
+      ? { rest: [0.055, -0.125, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
+      : { rest: [0.08, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
+    const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
+    const sc = 0.56 + 0.44 * fit;
     root.scale.setScalar(sc);
-    const baseX = (p.weapon === 'rifle' ? 0.235 : 0.21) * fit;
-    const baseY = (p.weapon === 'rifle' ? -0.235 : -0.21) * fit;
-    const baseZ = (p.weapon === 'rifle' ? -0.36 : -0.32);
-    const baseRY = 0.05;
 
-    // 开镜：枪身下移到屏幕底部，只露出机匣与机瞄，视线保持通畅
-    const adsX = 0;
-    const adsY = p.weapon === 'rifle' ? -0.155 : -0.125;
-    const adsZ = -0.44;
+    const [rx0, ry0, rz0] = sights.rest;
+    const [ax0, ay0, az0] = sights.ads;
+    const baseRY = sights.ry;   // 枪身略微内收，让右侧侧向细节可见
     const adsRY = 0;
 
-    let x = baseX + bobX * (1 - a);
-    let y = baseY + bobY * (1 - a) - reloadDrop - this.switchT * 0.4;
-    let z = baseZ + this.recoil * 0.05 + this.switchT * 0.12;
+    let x = rx0 * fit + bobX * (1 - a);
+    let y = ry0 + bobY * (1 - a) - reloadDrop - this.switchT * 0.4;
+    let z = rz0 + this.recoil * 0.05 + this.switchT * 0.12;
 
-    x += (adsX - x) * a;
-    y += (adsY - y) * a;
-    z += (adsZ - z) * a;
+    x += (ax0 * fit - x) * a;
+    y += (ay0 - y) * a;
+    z += (az0 - z) * a;
 
     root.position.set(x, y, z);
-    root.rotation.x = 0.02 + this.recoil * 0.14 + reloadRoll * 0.6;
-    root.rotation.z = 0.02 + reloadRoll * 0.5 + bobX * 1.4 * (1 - a);
+    const kick = this.recoil * 0.14;
+    root.rotation.x = (p.weapon === 'rifle' ? 0.015 : 0.02) + kick + reloadRoll * 0.6;
+    root.rotation.z = 0.02 + reloadRoll * 0.5 + bobX * 1.4 * (1 - a) + this.recoil * 0.05;
     root.rotation.y = baseRY + (adsRY - baseRY) * a + reloadRoll * 0.25;
 
     // 枪口火光

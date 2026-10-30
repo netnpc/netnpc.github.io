@@ -198,40 +198,82 @@ function cyl(r1, r2, h, m, seg = 12) {
 // 模型朝向：-Z 为枪口方向
 export function buildRifle() {
   const g = new THREE.Group();
-  const black = mat(0x5f656e, 0.45, 0.6);
-  const steel = mat(0x7d838d, 0.32, 0.8);
-  const wood = mat(0xb06a30, 0.55, 0.1);
-  const dark = mat(0x44484f, 0.65, 0.4);
+  const receiver = mat(0x4c5158, 0.5, 0.72);   // 冲压机匣钢
+  const steel = mat(0x6f747c, 0.38, 0.85);     // 枪管/小件
+  const dark = mat(0x34373c, 0.6, 0.55);       // 深色件
+  const wood = new THREE.MeshStandardMaterial({ color: 0x8a4c22, roughness: 0.5, metalness: 0.08 }); // 胡桃木
+  const woodD = new THREE.MeshStandardMaterial({ color: 0x6f3a18, roughness: 0.55, metalness: 0.08 });
+  const bakelite = new THREE.MeshStandardMaterial({ color: 0x9c4a1c, roughness: 0.42, metalness: 0.12 }); // 胶木弹匣
 
-  // 机匣
-  g.add(box(0.09, 0.11, 0.44, steel, 0, 0, 0));
-  // 上机匣盖
-  g.add(box(0.075, 0.045, 0.36, steel, 0, 0.075, -0.03));
-  // 枪管
-  const barrel = cyl(0.019, 0.019, 0.42, steel, 10);
-  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.035, -0.42); g.add(barrel);
-  // 导气管
-  g.add(box(0.045, 0.035, 0.26, black, 0, 0.085, -0.3));
-  // 准星
-  g.add(box(0.03, 0.055, 0.03, black, 0, 0.12, -0.56));
-  // 枪口
-  const muzzle = cyl(0.026, 0.026, 0.07, dark, 10);
-  muzzle.rotation.x = Math.PI / 2; muzzle.position.set(0, 0.035, -0.63); g.add(muzzle);
-  // 护木
-  g.add(box(0.085, 0.09, 0.2, wood, 0, 0.015, -0.3));
-  // 弹匣（弯曲用两段近似）
-  g.add(box(0.07, 0.19, 0.1, dark, 0, -0.15, 0.02, 0.28));
-  g.add(box(0.07, 0.13, 0.09, dark, 0, -0.25, 0.09, 0.62));
-  // 握把
-  g.add(box(0.06, 0.17, 0.08, wood, 0, -0.14, 0.2, -0.32));
-  // 枪托
-  g.add(box(0.07, 0.1, 0.26, wood, 0, -0.01, 0.34));
-  g.add(box(0.06, 0.14, 0.03, steel, 0, -0.03, 0.47));
-  // 机瞄
-  g.add(box(0.012, 0.03, 0.012, black, 0, 0.105, 0.1));
+  // ---- 机匣（冲压钢 + 圆形防尘盖） ----
+  g.add(box(0.075, 0.085, 0.34, receiver, 0, 0, 0.05));
+  const dust = cyl(0.041, 0.041, 0.3, receiver, 14); // 半沉入机匣形成圆顶
+  dust.rotation.x = Math.PI / 2; dust.position.set(0, 0.042, 0.04); g.add(dust);
+  // 机匣前后的固定帽
+  g.add(box(0.08, 0.095, 0.03, dark, 0, 0, -0.115));
+  g.add(box(0.08, 0.09, 0.03, dark, 0, 0, 0.215));
+  // 弹匣井
+  g.add(box(0.062, 0.05, 0.075, dark, 0, -0.06, 0.03));
+  // ---- 发射/快慢机与拉机柄（右侧细节） ----
+  g.add(box(0.014, 0.016, 0.11, dark, 0.045, -0.005, 0.10));  // 快慢机柄
+  const charge = cyl(0.011, 0.011, 0.045, steel, 8);          // 拉机柄
+  charge.rotation.x = Math.PI / 2; charge.position.set(0.056, 0.028, 0.10); g.add(charge);
 
-  // 持枪手臂（手套 + 袖子）
-  addArms(g, { front: [0.005, -0.16, 0.06], frontLen: 0.34, hand: 'grip', rear: [0, 0.02, 0.42] });
+  // ---- 木质下护木 + 上护木/导气管 ----
+  g.add(box(0.07, 0.055, 0.21, wood, 0, -0.012, -0.235));      // 下护木
+  g.add(box(0.05, 0.028, 0.19, woodD, 0, 0.038, -0.225));      // 上护木
+  const gasTube = cyl(0.013, 0.013, 0.2, steel, 8);            // 导气管
+  gasTube.rotation.x = Math.PI / 2; gasTube.position.set(0, 0.058, -0.225); g.add(gasTube);
+
+  // ---- 枪管 / 准星 / 斜切制退器 ----
+  const barrel = cyl(0.0135, 0.0135, 0.27, steel, 10);
+  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.018, -0.475); g.add(barrel);
+  // 导气箍
+  g.add(box(0.032, 0.05, 0.035, dark, 0, 0.03, -0.345));
+  // 表尺座（弧形表尺）
+  g.add(box(0.034, 0.028, 0.05, dark, 0, 0.058, -0.09));
+  const leaf = box(0.026, 0.008, 0.075, steel, 0, 0.075, -0.06, -0.08);
+  g.add(leaf);
+  // 准星座 + 准星（带护圈两耳）
+  g.add(box(0.03, 0.05, 0.032, dark, 0, 0.028, -0.575));
+  g.add(box(0.012, 0.05, 0.012, dark, 0, 0.075, -0.575));
+  g.add(box(0.008, 0.035, 0.01, dark, -0.019, 0.068, -0.575));
+  g.add(box(0.008, 0.035, 0.01, dark, 0.019, 0.068, -0.575));
+  g.add(box(0.006, 0.026, 0.006, steel, 0, 0.062, -0.575));    // 准星柱
+  // 枪口斜切制退器（AKM 标志性斜切口）+ 枪口内膛
+  const brake = cyl(0.0185, 0.0185, 0.062, dark, 12);
+  brake.rotation.x = Math.PI / 2; brake.position.set(0, 0.018, -0.62); g.add(brake);
+  const slant = box(0.036, 0.016, 0.032, dark, 0, 0.03, -0.648, 0.5);
+  g.add(slant);
+  const muzIn = cyl(0.0095, 0.0095, 0.03, mat(0x08090b, 0.95, 0.2), 10);
+  muzIn.rotation.x = Math.PI / 2; muzIn.position.set(0, 0.018, -0.648); g.add(muzIn);
+
+  // ---- 弯曲"香蕉"弹匣（胶木，三段渐进前弯） ----
+  g.add(box(0.054, 0.135, 0.08, bakelite, 0, -0.135, 0.012, 0.16));
+  g.add(box(0.052, 0.115, 0.075, bakelite, 0, -0.245, -0.03, 0.42));
+  g.add(box(0.05, 0.1, 0.07, bakelite, 0, -0.34, -0.105, 0.68));
+  g.add(box(0.053, 0.016, 0.073, dark, 0, -0.39, -0.158, 0.75)); // 弹匣底板
+  g.add(box(0.058, 0.008, 0.012, dark, 0, -0.19, 0.038, 0.3));   // 加强筋
+  g.add(box(0.058, 0.008, 0.012, dark, 0, -0.3, -0.06, 0.55));
+
+  // ---- 握把（木制，后倾） + 扳机护圈 ----
+  g.add(box(0.042, 0.125, 0.055, woodD, 0, -0.105, 0.15, -0.45));
+  g.add(box(0.012, 0.01, 0.075, dark, 0, -0.078, 0.085));      // 护圈下缘
+  g.add(box(0.012, 0.045, 0.01, dark, 0, -0.052, 0.048));      // 护圈前柱
+  g.add(box(0.012, 0.038, 0.01, dark, 0, -0.05, 0.122));       // 护圈后柱
+  g.add(box(0.012, 0.04, 0.01, steel, 0, -0.055, 0.085, 0.12));// 扳机
+
+  // ---- 枪托（木质，向托底渐宽，带贴腮斜面与金属托底板） ----
+  g.add(box(0.04, 0.052, 0.1, wood, 0, -0.012, 0.265));            // 托颈
+  g.add(box(0.044, 0.072, 0.15, wood, 0, -0.022, 0.375));          // 托身
+  g.add(box(0.046, 0.03, 0.1, wood, 0, 0.026, 0.3, 0.06));         // 贴腮斜面
+  g.add(box(0.048, 0.092, 0.016, dark, 0, -0.03, 0.452, -0.03));   // 托底板
+  // 托与机匣连接销
+  const pin = cyl(0.008, 0.008, 0.072, steel, 6);
+  pin.rotation.z = Math.PI / 2; pin.position.set(0, -0.026, 0.222); g.add(pin);
+
+  // 持枪手臂（前手扶护木、后手握把，袖管比例自然）
+  addArms(g, { front: [0.005, -0.085, -0.28], frontLen: 0.3, hand: 'grip', rear: [0, 0.0, 0.4] });
 
   g.traverse((o) => { o.castShadow = true; });
   return g;
@@ -239,45 +281,135 @@ export function buildRifle() {
 
 function addArms(g, opt) {
   const glove = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.85, metalness: 0.1 });
-  const sleeve = new THREE.MeshStandardMaterial({ color: 0x5d6650, roughness: 0.95, metalness: 0.02 });
+  const sleeve = new THREE.MeshStandardMaterial({ color: 0x4f5745, roughness: 0.95, metalness: 0.02 });
   const skinMat = new THREE.MeshStandardMaterial({ color: 0xb98a68, roughness: 0.85 });
 
-  // 前手（握护木）
-  const fh = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 0.15), glove);
+  // 前手（托住护木下方）：手掌包住护木，手指朝右
+  const fh = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.075, 0.1), glove);
   fh.position.set(opt.front[0], opt.front[1], opt.front[2]);
   g.add(fh);
-  const fl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, opt.frontLen), sleeve);
-  fl.position.set(opt.front[0] - 0.02, opt.front[1] - 0.07, opt.front[2] + opt.frontLen / 2 + 0.04);
-  fl.rotation.x = -0.32; fl.rotation.z = -0.12;
-  g.add(fl);
-  const fw = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.075, 0.1), skinMat);
-  fw.position.set(opt.front[0] - 0.01, opt.front[1] - 0.05, opt.front[2] + 0.11);
+  const fthumb = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.03, 0.05), glove);
+  fthumb.position.set(opt.front[0] + 0.036, opt.front[1] + 0.028, opt.front[2] - 0.012);
+  g.add(fthumb);
+  // 露出的手腕
+  const fw = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.06, 0.05), skinMat);
+  fw.position.set(opt.front[0] - 0.006, opt.front[1] - 0.03, opt.front[2] + 0.075);
   g.add(fw);
+  // 袖口
+  const cuff = new THREE.Mesh(new THREE.BoxGeometry(0.076, 0.082, 0.03), glove);
+  cuff.position.set(opt.front[0] - 0.012, opt.front[1] - 0.045, opt.front[2] + 0.1);
+  cuff.rotation.x = -0.22;
+  g.add(cuff);
+  // 前臂袖子（向后下方延伸）
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.076, opt.frontLen), sleeve);
+  fl.position.set(opt.front[0] - 0.022, opt.front[1] - 0.075, opt.front[2] + opt.frontLen / 2 + 0.115);
+  fl.rotation.x = -0.26; fl.rotation.z = -0.08;
+  g.add(fl);
 
-  // 后手（握把）+ 小臂
-  const rh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.09, 0.1), glove);
-  rh.position.set(0, -0.13, 0.2); rh.rotation.x = -0.3;
+  // 后手（握把）：绕握把包住
+  const rh = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.08, 0.088), glove);
+  rh.position.set(0, -0.105, 0.15); rh.rotation.x = -0.42;
   g.add(rh);
-  const rl = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.3), sleeve);
-  rl.position.set(0.02, -0.24, 0.35); rl.rotation.x = 0.42; rl.rotation.z = 0.1;
+  const rthumb = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.026, 0.062), glove);
+  rthumb.position.set(-0.036, -0.075, 0.13); rthumb.rotation.x = -0.42;
+  g.add(rthumb);
+  // 手腕
+  const rw = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.064, 0.05), skinMat);
+  rw.position.set(0, -0.158, 0.208); rw.rotation.x = -0.5;
+  g.add(rw);
+  // 后臂袖子
+  const rl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.086, 0.28), sleeve);
+  rl.position.set(0.014, -0.232, 0.35); rl.rotation.x = 0.42; rl.rotation.z = 0.09;
   g.add(rl);
 }
 
 export function buildPistol() {
+  // ---- Desert Eagle .50AE：固定枪管 + 大型套筒 + 粗壮握把 ----
   const g = new THREE.Group();
-  const black = mat(0x62686f, 0.42, 0.6);
-  const dark = mat(0x44484f, 0.65, 0.4);
-  g.add(box(0.07, 0.1, 0.3, black, 0, 0, -0.02));   // 套筒
-  g.add(box(0.062, 0.07, 0.16, dark, 0, -0.09, 0.07, 0.12)); // 握把
-  const barrel = cyl(0.014, 0.014, 0.06, dark, 8);
-  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.015, -0.19); g.add(barrel);
-  g.add(box(0.012, 0.022, 0.012, black, 0, 0.062, -0.14)); // 准星
-  const glove2 = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.85 });
-  const sleeve2 = new THREE.MeshStandardMaterial({ color: 0x5d6650, roughness: 0.95 });
-  const hd = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.1, 0.1), glove2);
-  hd.position.set(0, -0.08, 0.06); g.add(hd);
-  const sl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 0.26), sleeve2);
-  sl.position.set(0.02, -0.2, 0.2); sl.rotation.x = 0.55; g.add(sl);
+  const slide = mat(0x596068, 0.4, 0.86);    // 不锈钢套筒
+  const slideD = mat(0x40454c, 0.44, 0.82);  // 套筒侧壁
+  const dark = mat(0x24272b, 0.56, 0.7);     // 发黑小件
+  const frame = mat(0x3a3e44, 0.5, 0.78);    // 下机匣
+  const gripM = new THREE.MeshStandardMaterial({ color: 0x1c1e21, roughness: 0.82, metalness: 0.14 });
+  const steel = mat(0x828790, 0.3, 0.9);
+
+  // ---- 套筒主体：前段窄（护住固定枪管）、后段宽（容纳枪机） ----
+  g.add(box(0.07, 0.056, 0.175, slide, 0, 0.004, 0.1));    // 后段宽套筒
+  g.add(box(0.062, 0.05, 0.155, slide, 0, 0.002, -0.06));   // 前段套筒
+  // 套筒两侧下缘斜面（Deagle 的梯形断面）
+  for (const sx of [-1, 1]) {
+    g.add(box(0.008, 0.02, 0.3, slideD, sx * 0.036, -0.012, 0.01, 0, 0, sx * 0.35));
+  }
+  // 后段防滑纹
+  for (let i = 0; i < 6; i++) g.add(box(0.074, 0.042, 0.0055, dark, 0, 0.004, 0.15 + i * 0.0115));
+  // 前段泄气槽
+  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++)
+    g.add(box(0.0035, 0.012, 0.026, dark, sx * 0.0315, 0.014, -0.09 - i * 0.03));
+
+  // ---- 固定枪管（.50 大口径，露出于套筒之前） ----
+  const barrel = cyl(0.0235, 0.0235, 0.13, slide, 14);
+  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.012, -0.185); g.add(barrel);
+  // 枪管顶部平台
+  g.add(box(0.03, 0.014, 0.13, slide, 0, 0.033, -0.185));
+  // 枪口 + 内膛
+  const bore = cyl(0.0245, 0.0245, 0.022, steel, 14);
+  bore.rotation.x = Math.PI / 2; bore.position.set(0, 0.012, -0.252); g.add(bore);
+  const boreIn = cyl(0.0175, 0.0175, 0.03, mat(0x08090b, 0.95, 0.2), 12);
+  boreIn.rotation.x = Math.PI / 2; boreIn.position.set(0, 0.012, -0.256); g.add(boreIn);
+
+  // ---- 顶部瞄准肋条（Deagle 标志性的锯齿散热肋） ----
+  g.add(box(0.024, 0.012, 0.235, steel, 0, 0.042, -0.075));
+  for (let i = 0; i < 8; i++) g.add(box(0.028, 0.006, 0.014, dark, 0, 0.05, -0.17 + i * 0.024));
+  // 前准星 / 后照门（梯形，两片）
+  g.add(box(0.01, 0.024, 0.016, dark, 0, 0.056, -0.228));
+  g.add(box(0.026, 0.012, 0.014, dark, 0, 0.048, 0.172));
+  for (const sx of [-1, 1]) g.add(box(0.008, 0.02, 0.012, dark, sx * 0.014, 0.056, 0.172));
+
+  // ---- 下机匣 / 扳机护圈 ----
+  g.add(box(0.054, 0.042, 0.22, frame, 0, -0.036, 0.03));
+  g.add(box(0.014, 0.011, 0.088, frame, 0, -0.083, -0.014));   // 护圈下缘
+  g.add(box(0.014, 0.046, 0.012, frame, 0, -0.06, -0.056));    // 护圈前柱
+  g.add(box(0.014, 0.044, 0.012, frame, 0, -0.058, 0.028));    // 护圈后柱
+  g.add(box(0.011, 0.042, 0.011, steel, 0, -0.056, -0.014, 0.14)); // 扳机
+  // 滑套卡榫 / 保险
+  g.add(box(0.008, 0.014, 0.03, dark, 0.036, -0.008, 0.06));
+  g.add(box(0.008, 0.012, 0.026, dark, -0.036, 0.006, 0.14));
+
+  // ---- 握把（粗壮，指槽 + 侧板） ----
+  g.add(box(0.048, 0.155, 0.072, gripM, 0, -0.132, 0.108, -0.3));
+  g.add(box(0.054, 0.1, 0.046, dark, 0, -0.132, 0.114, -0.3));    // 侧板
+  for (let i = 0; i < 3; i++)                                     // 指槽
+    g.add(box(0.052, 0.007, 0.058, dark, 0, -0.075 - i * 0.032, 0.09 + i * 0.011, -0.3));
+  g.add(box(0.058, 0.046, 0.082, frame, 0, -0.056, 0.148, -0.1)); // 握把与机匣过渡
+  g.add(box(0.052, 0.026, 0.046, frame, 0, 0.004, 0.196, -0.14)); // 海狸尾
+  g.add(box(0.05, 0.014, 0.03, gripM, 0, -0.212, 0.148, -0.3));   // 弹匣底板
+
+  // ---- 击锤（外露，后倾） ----
+  g.add(box(0.014, 0.03, 0.014, steel, 0, 0.036, 0.198, -0.42));
+  g.add(box(0.02, 0.012, 0.012, steel, 0, 0.05, 0.186, -0.42));
+
+  // ---- 双手（右手握把 + 左手包覆，手臂） ----
+  const glove = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.85 });
+  const gloveL = new THREE.MeshStandardMaterial({ color: 0x33363b, roughness: 0.85 });
+  const sleeve = new THREE.MeshStandardMaterial({ color: 0x5d6650, roughness: 0.95 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xb98a68, roughness: 0.85 });
+  // 右手（主手，包住握把）
+  const hd = new THREE.Mesh(new THREE.BoxGeometry(0.078, 0.105, 0.1), glove);
+  hd.position.set(0.004, -0.115, 0.108); hd.rotation.x = -0.3; g.add(hd);
+  const rthumb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.03), glove);
+  rthumb.position.set(-0.035, -0.085, 0.088); rthumb.rotation.x = -0.35; g.add(rthumb);
+  // 左手（副手，从左侧包覆）
+  const hd2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.108, 0.098), gloveL);
+  hd2.position.set(-0.042, -0.135, 0.115); hd2.rotation.x = -0.3; hd2.rotation.z = 0.1; g.add(hd2);
+  const lthumb = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.026, 0.062), gloveL);
+  lthumb.position.set(-0.03, -0.072, 0.075); lthumb.rotation.x = -0.3; g.add(lthumb);
+  // 手腕
+  const wr = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.068, 0.048), skin);
+  wr.position.set(-0.014, -0.185, 0.182); wr.rotation.x = -0.42; g.add(wr);
+  // 小臂（向后下方）
+  const sl = new THREE.Mesh(new THREE.BoxGeometry(0.096, 0.104, 0.26), sleeve);
+  sl.position.set(-0.028, -0.245, 0.3); sl.rotation.x = 0.46; sl.rotation.z = -0.12; g.add(sl);
+
   g.traverse((o) => { o.castShadow = true; });
   return g;
 }

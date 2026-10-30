@@ -10,9 +10,9 @@ export const WEAPONS = {
     reloadTime: 2.0, auto: true, range: 90, falloff: 0.62, kick: 0.035,
   },
   pistol: {
-    id: 'pistol', name: 'G17 PISTOL', magSize: 17, reserveMax: 120, rpm: 380, dmg: 26, headMul: 3.6,
-    spread: 0.014, spreadMoving: 0.03, spreadAds: 0.006, recoil: 0.014, recoilMax: 0.06,
-    reloadTime: 1.4, auto: false, range: 70, falloff: 0.55, kick: 0.028,
+    id: 'pistol', name: 'DESERT EAGLE .50', magSize: 7, reserveMax: 56, rpm: 210, dmg: 54, headMul: 3.0,
+    spread: 0.010, spreadMoving: 0.034, spreadAds: 0.004, recoil: 0.03, recoilMax: 0.12,
+    reloadTime: 1.7, auto: false, range: 80, falloff: 0.7, kick: 0.07,
   },
 };
 
@@ -37,7 +37,7 @@ export class Player {
     this.recoilPitch = 0;
     this.recoilYaw = 0;
     this.weapon = 'rifle';
-    this.ammo = { rifle: { mag: 30, reserve: 150 }, pistol: { mag: 17, reserve: 68 } };
+    this.ammo = { rifle: { mag: 30, reserve: 150 }, pistol: { mag: 7, reserve: 28 } };
     this.reloading = false;
     this.reloadT = 0;
     this.fireCd = 0;
@@ -55,7 +55,7 @@ export class Player {
     this.pitch = 0;
     this.hp = 100; this.armor = 100;
     this.weapon = 'rifle';
-    this.ammo = { rifle: { mag: 30, reserve: 150 }, pistol: { mag: 17, reserve: 68 } };
+    this.ammo = { rifle: { mag: 30, reserve: 150 }, pistol: { mag: 7, reserve: 28 } };
     this.reloading = false; this.reloadT = 0; this.fireCd = 0;
     this.recoilPitch = 0; this.recoilYaw = 0;
     this.stats = { kills: 0, heads: 0, shots: 0, hits: 0, score: 0 };
