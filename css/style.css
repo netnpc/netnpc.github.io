@@ -48,8 +48,16 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#05070a;colo
 @keyframes pulse{50%{opacity:.55}}
 
 #roundinfo{position:absolute;top:22%;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:4px;color:rgba(255,255,255,.75);text-shadow:0 2px 8px #000;text-align:center}
-#alert{position:absolute;top:34%;left:50%;transform:translate(-50%,-50%);font-size:clamp(20px,5vw,38px);font-weight:800;letter-spacing:6px;color:#fff;text-shadow:0 4px 24px rgba(0,0,0,.9);opacity:0;transition:opacity .35s;text-align:center;white-space:nowrap}
+/* 中央提示：宽度锁在安全区内，字号由 JS 按实测宽度自适应，
+   长句自动折行，保证任何屏幕都能完整显示 */
+#alert{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);width:min(88vw,900px);font-size:clamp(16px,4.4vw,38px);font-weight:800;letter-spacing:.14em;line-height:1.24;color:#fff;text-shadow:0 4px 24px rgba(0,0,0,.9);opacity:0;transition:opacity .35s;text-align:center;white-space:normal;overflow-wrap:break-word;word-break:break-word}
 #alert.show{opacity:1}
+/* 横屏矮屏时上移一点，避免与下方准星/枪身挤在一起 */
+@media (max-height:480px){
+  #alert{top:40%}
+}
+#alert .al-main{display:block;white-space:nowrap}
+#alert .al-sub{display:block;white-space:nowrap;font-size:.62em;font-weight:700;letter-spacing:.2em;color:rgba(255,255,255,.78);margin-top:.28em}
 
 #killfeed{position:absolute;right:calc(12px + env(safe-area-inset-right));top:calc(58px + env(safe-area-inset-top));display:flex;flex-direction:column;gap:5px;align-items:flex-end}
 .kf{background:rgba(8,11,16,.72);border-left:2px solid var(--accent);padding:4px 9px;font-size:12px;border-radius:2px;animation:kfin .2s ease-out;white-space:nowrap}

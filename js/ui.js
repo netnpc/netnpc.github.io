@@ -99,12 +99,70 @@ export class HUD {
     while (this.el.killfeed.children.length > 4) this.el.killfeed.firstChild.remove();
   }
 
+  /**
+   * 中央大字提示。
+   * 传 "主标题|副标题" 会显示成两行，副标题略小。
+   * 渲染后实测文字宽度，超出安全宽度时自动缩字号，保证任何屏幕完整可见。
+   */
   alert(text, dur = 1.6) {
     const a = this.el.alert;
-    a.textContent = text;
+    a.innerHTML = '';
     a.style.fontSize = '';
+    const bar = String(text).indexOf('|');
+    if (bar >= 0) {
+      const main = String(text).slice(0, bar).trim();
+      const sub = String(text).slice(bar + 1).trim();
+      const m = document.createElement('span');
+      m.className = 'al-main';
+      m.textContent = main;
+      a.appendChild(m);
+      if (sub) {
+        const s = document.createElement('span');
+        s.className = 'al-sub';
+        s.textContent = sub;
+        a.appendChild(s);
+      }
+    } else {
+      // 纯文本也包一层，与两行版共用同一套测宽逻辑
+      const m = document.createElement('span');
+      m.className = 'al-main';
+      m.textContent = text;
+      a.appendChild(m);
+    }
     a.classList.add('show');
     this._alertT = dur;
+    this._fitAlert();
+  }
+
+  /** 按容器实际宽度收缩字号，最多缩到基准的 45%；仍放不下则允许折行 */
+  _fitAlert() {
+    const a = this.el.alert;
+    const boxW = a.clientWidth;
+    if (!boxW) return;
+    const base = parseFloat(getComputedStyle(a).fontSize) || 20;
+    const kids = Array.from(a.children);
+    // 主标题 nowrap，用 Range 量真实文字宽度（不取 offsetWidth，那是块宽）
+    const textW = () => {
+      if (!kids.length) return a.scrollWidth;
+      return Math.max(...kids.map((k) => {
+        const rg = document.createRange();
+        rg.selectNodeContents(k);
+        return rg.getBoundingClientRect().width;
+      }));
+    };
+    let fs = base;
+    a.style.fontSize = fs + 'px';
+    let guard = 0;
+    while (guard++ < 22) {
+      if (textW() <= boxW - 2) break;
+      if (fs <= base * 0.45) {
+        // 到下限仍溢出：放开换行，宁可折行也不出屏
+        kids.forEach((k) => { k.style.whiteSpace = 'normal'; });
+        break;
+      }
+      fs = Math.max(base * 0.45, fs * 0.94);
+      a.style.fontSize = fs.toFixed(2) + 'px';
+    }
   }
 
   roundInfo(text) { this.el.roundinfo.textContent = text || ''; }

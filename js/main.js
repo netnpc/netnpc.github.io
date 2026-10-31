@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031170138';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031170138';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031170138';
-import { HUD } from './ui.js?v=20261031170138';
-import { Input } from './input.js?v=20261031170138';
-import { Sfx } from './audio.js?v=20261031170138';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031170138';
+import * as THREE from '../vendor/three.module.min.js?v=20261031171017';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031171017';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031171017';
+import { HUD } from './ui.js?v=20261031171017';
+import { Input } from './input.js?v=20261031171017';
+import { Sfx } from './audio.js?v=20261031171017';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031171017';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -368,7 +368,7 @@ class Game {
     this.totalEnemies += cfg.count;
     this.waveActive = true;
     this.spawnTimer = 0.5;
-    this.hud.alert(n === 1 ? 'WAVE 1 · HOSTILES INBOUND' : `WAVE ${n} · ${cfg.count} HOSTILES`, 2.0);
+    this.hud.alert(n === 1 ? 'WAVE 1|HOSTILES INBOUND' : `WAVE ${n}|${cfg.count} HOSTILES`, 2.0);
     this.hud.roundInfo(`WAVE ${n} / 3 · ${this.waveQueue.length} LEFT`);
 
     // 每波补充弹药
@@ -379,7 +379,7 @@ class Game {
       this.player.hp = Math.min(100, this.player.hp + 20);
       this.hud.updateAmmo(this.player);
       this.hud.updateVitals(this.player);
-      this.hud.alert('RESUPPLIED · AMMO / ARMOR / HEALTH', 1.8);
+      this.hud.alert('RESUPPLIED|AMMO · ARMOR · HEALTH', 1.8);
     }
   }
 
@@ -399,7 +399,7 @@ class Game {
       if (this.round >= 3) {
         this.endGame(true);
       } else {
-        this.hud.alert('WAVE CLEAR · STANDBY FOR NEXT', 1.8);
+        this.hud.alert('WAVE CLEAR|STANDBY FOR NEXT', 2.2);
         this._nextWaveT = 2.6;
       }
     }

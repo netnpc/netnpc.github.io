@@ -95,13 +95,14 @@ export class Player {
     // 移动
     const ax = input.axis();
     const sprint = input.sprinting && ax.y > 0.1 && !this.crouch;
-    let speed = this.crouch ? 2.3 : sprint ? 8.2 : 5.2;
-    if (this.reloading) speed *= 0.9;
+    // 移动速度：提升步行/冲刺速度并加快起步响应，手感更利落
+    let speed = this.crouch ? 2.9 : sprint ? 10.4 : 6.8;
+    if (this.reloading) speed *= 0.92;
     const sinY = Math.sin(this.yaw), cosY = Math.cos(this.yaw);
     // 前方向 (-sin, -cos)，右方向 (cos, -sin)
     const wishX = (-sinY * ax.y + cosY * ax.x) * speed;
     const wishZ = (-cosY * ax.y - sinY * ax.x) * speed;
-    const accel = this.onGround ? 14 : 3.2;
+    const accel = this.onGround ? 22 : 4.2;
     this.vel.x += (wishX - this.vel.x) * Math.min(1, accel * dt);
     this.vel.z += (wishZ - this.vel.z) * Math.min(1, accel * dt);
 
@@ -140,10 +141,10 @@ export class Player {
     // 防止穿过地面
     if (this.pos.y < 0) { this.pos.y = 0; this.vel.y = 0; this.onGround = true; }
 
-    // 脚步声 & 晃动
+    // 脚步声 & 晃动（步频按实际位移走，速度提升后自动变快；晃动系数略降避免抖）
     const hs = Math.hypot(this.vel.x, this.vel.z);
     if (this.onGround && hs > 1.2) {
-      this.bobT += dt * hs * 1.5;
+      this.bobT += dt * hs * 1.22;
       this._stepT = (this._stepT || 0) + dt * hs;
       const stepInt = sprint ? 2.6 : 3.4;
       if (this._stepT > stepInt) { this._stepT = 0; this.game.sfx.step(); }
