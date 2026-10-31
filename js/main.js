@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031181829';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031181829';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031181829';
-import { HUD } from './ui.js?v=20261031181829';
-import { Input } from './input.js?v=20261031181829';
-import { Sfx } from './audio.js?v=20261031181829';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031181829';
+import * as THREE from '../vendor/three.module.min.js?v=20261031191726';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031191726';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031191726';
+import { HUD } from './ui.js?v=20261031191726';
+import { Input } from './input.js?v=20261031191726';
+import { Sfx } from './audio.js?v=20261031191726';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031191726';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -151,6 +151,10 @@ class Game {
     this.pistolRoot.position.set(0.075, -0.125, -0.5);
     this.rifleRoot.rotation.set(0.015, 0.15, 0.02);
     this.pistolRoot.rotation.set(0.015, 0.2, 0.02);
+    // 枪管轴线锚点必须挂在 Root 上：updateWeaponView 读的是 root.userData.axis，
+    // 挂在模型自身上会导致手枪静默退回步枪的兜底参数（枪口偏出 42–77px）。
+    this.rifleRoot.userData.axis = this.rifle.userData.axis;
+    this.pistolRoot.userData.axis = this.pistol.userData.axis;
     this.pistolRoot.visible = false;
     this.wScene.add(this.rifleRoot, this.pistolRoot);
 
@@ -759,43 +763,74 @@ class Game {
     y += (ay0 - y) * a;
     z += (az0 * dolly - z) * a;
 
-    // ---- 枪身姿态：让枪管指向准星 ----
-    // CS 的构图是"枪托在右下、枪管朝前上方收到准星"。
-    // 直接把枪口搬到屏幕中心：在 YXZ 顺序下可闭式反解 pitch / yaw。
-    // 旋转后枪口 = R(pitch,yaw)·(0, AY, AZ)，要求 x+R.x=0 且 y+R.y=0。
-    const axis = root.userData.axis || { y: 0.02, z: -0.6, rear: 0 };
-    const kick = this.recoil * 0.14;
-    const AY = axis.y * sc;              // 枪管相对枪身的高度（含缩放）
-    const AZ = axis.z * sc;              // 枪口前伸量（负数）
-    // 横向：x + AZ·sin(yaw) = 0
-    const sYaw = Math.max(-0.99, Math.min(0.99, -x / AZ));
-    const yawTo = Math.asin(sYaw);
-    // 纵向：y + AZ·(-sin(p)·cosYaw) + AY·cos(p) = 0
-    //   →  AY·cos(p) - AZ·cosYaw·sin(p) = -y
-    //   →  R·cos(p + φ) = -y ，其中 R=hypot(AY, AZ·cosYaw)，tan(φ)=AZ·cosYaw/AY
-    const cy = Math.cos(yawTo);
-    const B = -AZ * cy;                  // B 为正（AZ<0）
-    const R = Math.hypot(AY, B);
-    const phi = Math.atan2(B, AY);
-    let pitchTo = 0;
-    if (R > 1e-6) {
-      const c = Math.max(-1, Math.min(1, -y / R));
-      // 取离 0 最近的解，避免枪口大幅翻转
-      const cand1 = Math.acos(c) + phi;
-      const cand2 = -Math.acos(c) + phi;
-      const norm = (v) => Math.atan2(Math.sin(v), Math.cos(v));
-      const a1 = norm(cand1), a2 = norm(cand2);
-      pitchTo = Math.abs(a1) < Math.abs(a2) ? a1 : a2;
+    // 竖屏兜底：屏幕又窄又高时，光靠俯仰转不到准星（rot.x 要到 1.9 rad 才够），
+    // 强转会把手里的枪拧成横在画面中间、完全不像 CS。
+    // 这里只做小幅抬高，剩下的差距交给"枪口在准星正下方一点"来承担——
+    // 竖屏窄画幅本来就无法既保住右下角构图又把枪管顶到正中。
+    // 开镜后枪身移向中央，抬枪上限放开，同时把机位再抬一点，让枪管真正贴住准星。
+    if (portrait) {
+      const lift = Math.min(0.045, Math.max(0, (1 / this.camera.aspect - 0.62) * 0.032));
+      x += 0.005 * a;                       // 开镜时轻微扶正，别让枪身歪在左侧
+      y += lift * (1 - a) + 0.030 * a;      // 开镜另外抬一点，让枪管贴住准星
     }
-    // 腰射做 92%：枪口压在准星上，同时枪身仍在右下角
-    const mix = THREE.MathUtils.lerp(0.92, 1, a);
-    const baseRY = yawTo * mix;
-    const baseRX = pitchTo * mix;
 
-    // 姿态：闭式解给出基准角度，再叠加后坐 / 换弹 / 走动的表现层偏移
-    root.rotation.x = baseRX + kick + reloadRoll * 0.6;
-    root.rotation.y = baseRY + reloadRoll * 0.25;
-    root.rotation.z = (p.weapon === 'rifle' ? 0.02 : 0.015) * (1 - a)
+    // ---- 枪身姿态：让枪管指向准星 ----
+    // 目标：把枪口锚点搬到屏幕正中（准星所在），同时枪托留在右下角。
+    // 欧拉序 XYZ 下俯仰与横摆互相耦合、素材局部轴向也不易硬推，
+    // 因此直接在真实相机投影里反解：先把候选变换写进 root，再读它的 matrixWorld，
+    // 用一维割线法让枪口投影的 x、y 都落到 0。与几何细节无关，收敛到亚像素。
+    const axis = root.userData.axis || { x: 0, y: 0.02, z: -0.6, rear: 0 };
+    const kick = this.recoil * 0.14;
+    const baseRotZ = (p.weapon === 'rifle' ? 0.02 : 0.015) * (1 - a);
+    const _p = new THREE.Vector3();
+    // 把 (pos, rx, ry, rz) 实际写进 root 并返回枪口投影
+    const project = (px, py, pz, rx, ry, rz) => {
+      root.position.set(px, py, pz);
+      root.rotation.set(rx, ry, rz);
+      root.updateMatrixWorld(true);
+      _p.set(axis.x || 0, axis.y, axis.z).applyMatrix4(root.matrixWorld).project(this.wCam);
+      return _p;
+    };
+    // 一维割线法：单调求解 f(t)=0
+    const solve = (f, t0, lo, hi) => {
+      let a0 = t0, fa = f(a0);
+      let b0 = a0 + 0.02, fb = f(b0);
+      for (let i = 0; i < 9; i++) {
+        if (Math.abs(fb) < 1e-7 || fb === fa) break;
+        let t = b0 - fb * (b0 - a0) / (fb - fa);
+        if (!Number.isFinite(t)) t = (a0 + b0) * 0.5;
+        t = Math.max(lo, Math.min(hi, t));
+        a0 = b0; fa = fb;
+        b0 = t; fb = f(b0);
+      }
+      return b0;
+    };
+    // 交叉迭代：横向解 rot.y（总是精确），纵向解 rot.x。
+    // 表现层偏移（后坐 / 换弹 / 走动）在反解时就一并计入，解出来即最终呈现。
+    //
+    // 两个特殊处理：
+    // ① 腰射只抬到 92%（mix），枪口压在准星上、枪托仍在右下角，更贴近经典 CS 构图；
+    //    开镜时 mix=1，是精确解。
+    // ② 竖屏又窄又高：腰射想把枪口顶到准星需要 rot.x≈1.9rad，会把枪拧成横在画面中间，
+    //    完全不像 CS。所以竖屏腰射只解到"自然抬枪上限"，枪口落在准星正下方一点；
+    //    开镜时枪身已移到画面中央，限幅放开，精确归位。
+    // 求解目标就是"最终写进 root 的角度"（含 mix 缩放与表现层偏移），否则会被 mix 拉偏。
+    const mix = THREE.MathUtils.lerp(0.92, 1, a);
+    // 竖屏限幅只在腰射阶段生效，开镜过程里平滑放开，保证开镜后精确归位
+    const pitchCap = portrait ? THREE.MathUtils.lerp(0.42, 1.55, a) : 1.5;
+    const maxPitch = pitchCap / mix;
+    let pitchTo = 0.16, yawTo = 0;
+    for (let i = 0; i < 3; i++) {
+      yawTo = solve((t) => project(x, y, z, pitchTo * mix + kick + reloadRoll * 0.6, t * mix + reloadRoll * 0.25, baseRotZ).x,
+        yawTo, -1.4 / mix, 1.4 / mix);
+      pitchTo = solve((t) => project(x, y, z, t * mix + kick + reloadRoll * 0.6, yawTo * mix + reloadRoll * 0.25, baseRotZ).y,
+        pitchTo, -1.1 / mix, maxPitch);
+    }
+
+    // 姿态：反解结果直接写入（已含后坐 / 换弹 / 走动的表现层偏移）
+    root.rotation.x = pitchTo * mix + kick + reloadRoll * 0.6;
+    root.rotation.y = yawTo * mix + reloadRoll * 0.25;
+    root.rotation.z = baseRotZ
       + reloadRoll * 0.5 + bobX * 1.2 * (1 - a) + this.recoil * 0.05;
     root.position.set(x, y, z);
     root.updateWorldMatrix(true, true);
