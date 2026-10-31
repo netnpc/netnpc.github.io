@@ -100,21 +100,21 @@ body.touchmode #hint{display:none}
 
 /* ---------- 移动端控制 ---------- */
 #touch{position:absolute;inset:0}
-/* 左侧控制区尺寸变量：竖屏大、横屏小；开火键在摇杆正下方 */
+/* 左侧控制区尺寸变量：竖屏大、横屏小；开火键在上，移动摇杆在下 */
 body.touchmode{
   --joyX: calc(78px + env(safe-area-inset-left));
   --joyR: 59px;              /* 摇杆半径 */
-  --joyCY: calc(168px + env(safe-area-inset-bottom));  /* 摇杆圆心距底 */
+  --joyCY: calc(62px + env(safe-area-inset-bottom));   /* 摇杆圆心距底（下层） */
   --fireR: 44px;             /* 开火键半径 */
-  --fireCY: calc(64px + env(safe-area-inset-bottom));  /* 开火键圆心距底 */
+  --fireCY: calc(182px + env(safe-area-inset-bottom)); /* 开火键圆心距底（上层） */
 }
 @media (max-height:480px){
   body.touchmode{
     --joyX: calc(66px + env(safe-area-inset-left));
     --joyR: 48px;
-    --joyCY: calc(134px + env(safe-area-inset-bottom));
+    --joyCY: calc(52px + env(safe-area-inset-bottom));
     --fireR: 38px;
-    --fireCY: calc(52px + env(safe-area-inset-bottom));
+    --fireCY: calc(148px + env(safe-area-inset-bottom));
   }
 }
 /* 摇杆触发区：仅占左下角一块方区，右侧大面积为视角滑动区 */
@@ -137,14 +137,14 @@ body.touchmode #stickBase.idle #stickKnob{background:rgba(255,255,255,.22)}
 #btnFire::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,80,80,.35);opacity:.55;transition:opacity .12s,inset .12s}
 #btnFire:active::after{opacity:1;inset:-10px;border-color:rgba(255,120,120,.85)}
 #btnFire:active{border-color:rgba(255,150,150,.95)}
-/* 摇杆上方的 MOVE 提示 */
-#stickHint{position:absolute;left:var(--joyX,calc(78px + env(safe-area-inset-left)));bottom:calc(var(--joyCY,168px) + var(--joyR,59px) + 6px);transform:translateX(-50%);font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.34);pointer-events:none;transition:opacity .2s}
+/* 摇杆右侧的 MOVE 提示（与摇杆圆心同一水平线，贴屏边时也不会掉出画面） */
+#stickHint{position:absolute;left:calc(var(--joyX,calc(78px + env(safe-area-inset-left))) + var(--joyR,59px) + 10px);bottom:calc(var(--joyCY,62px) - 5px);transform:none;font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.38);pointer-events:none;transition:opacity .2s;white-space:nowrap}
 body.touchmode #stickHint{opacity:1}
 @media (max-height:480px){#stickHint{display:none}}
 /* 移动端：左上雷达，血量放在雷达下方，弹药移到右上角下方 */
 body.touchmode #radarWrap{width:84px;height:84px;left:calc(10px + env(safe-area-inset-left));top:calc(10px + env(safe-area-inset-top))}
-body.touchmode #bottomleft{left:calc(176px + env(safe-area-inset-left));bottom:calc(70px + env(safe-area-inset-bottom));top:auto;gap:2px}
-@media (max-height:480px){body.touchmode #bottomleft{left:calc(146px + env(safe-area-inset-left));bottom:calc(56px + env(safe-area-inset-bottom))}}
+body.touchmode #bottomleft{left:calc(158px + env(safe-area-inset-left));bottom:calc(46px + env(safe-area-inset-bottom));top:auto;gap:2px}
+@media (max-height:480px){body.touchmode #bottomleft{left:calc(134px + env(safe-area-inset-left));bottom:calc(36px + env(safe-area-inset-bottom))}}
 /* 竖屏手机：横向没有空间并排，血条退回底部靠右 */
 @media (max-width:600px){body.touchmode #bottomleft{left:auto;right:calc(16px + env(safe-area-inset-right));bottom:calc(30px + env(safe-area-inset-bottom));align-items:flex-end}}
 body.touchmode .hpbar{width:92px;height:6px}
