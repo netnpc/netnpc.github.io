@@ -285,7 +285,9 @@ export class Enemy {
     this.vest = ud.vest;
     this.flashMats = ud.flashMats;
     this.gun = ud.gun;
-    this.gunBase = { y: this.gun.position.y, rx: this.gun.rotation.x };
+    // 待机姿态与瞄准姿态：rx 是素材原有的抬枪量（握持基准），ry/rz 保证 quaternion.copy 后
+    // 每次复用的是同一个"原始的斜持"而不是上一次写进去的瞄准结果
+    this.gunBase = { y: this.gun.position.y, rx: this.gun.rotation.x, ry: this.gun.rotation.y, rz: this.gun.rotation.z };
     // 整体放大（原来偏小，远看像小人）；精英再大一圈
     const scl = tier === 2 ? 1.2 : tier === 1 ? 1.13 : 1.16;
     this.group.scale.setScalar(scl);
@@ -492,13 +494,21 @@ export class Enemy {
     // 地面
     this.pos.y = world.groundHeight(this.pos.x, this.pos.z, this.radius, 2);
 
+    // 应用身体朝向后，再对准枪（顺序很重要：aimGun 依赖 group 的世界朝向，
+    // 若先瞄准再改朝向，枪会被转过一个身体转角，看起来在手里乱转）
+    this.group.position.copy(this.pos);
+    this.group.rotation.y = this.yaw;
+    this.group.updateMatrixWorld(true);
+
     // 开火
     if (this.state === 'attack' && this.seesPlayer) {
       this.fireCd -= dt;
       // 抬枪瞄准：枪管真实指向玩家（子弹从枪口射向玩家，视觉一致）
-      this.aimT = Math.min(1, this.aimT + dt * 6);
+      this.aimT = Math.min(1, this.aimT + dt * 5);
       this.aimGun(player, this.aimT);
-      if (this.fireCd <= 0 && !player.dead) {
+      // 只在枪管基本转正后才扣扳机：弹道直接取枪管方向，
+      // 若在 aimT 过渡途中开火，屏幕上的枪还没指过来、子弹却已经飞出去，就会"看起来不在一条线"。
+      if (this.fireCd <= 0 && !player.dead && this.aimT > 0.88) {
         const rate = this.tier === 2 ? 1.0 : this.tier === 1 ? 0.62 : 0.85;
         this.fireCd = rate * (0.85 + Math.random() * 0.5);
         this.shootAt(player, dist);
@@ -510,20 +520,16 @@ export class Enemy {
       this.aimGun(player, this.aimT);
       this.fireCd = Math.max(this.fireCd - dt, 0.25 + Math.random() * 0.4);
     }
-
-    // 应用
-    this.group.position.copy(this.pos);
-    this.group.rotation.y = this.yaw;
   }
 
   // 把枪管对准玩家：k=0..1 在待机姿态与瞄准姿态之间插值。
-  // 之前只俯仰枪身、方向仍跟着身体走，玩家在侧面时子弹与枪管明显分叉；
-  // 现在直接把枪管 -Z 轴用四元数对到"枪口→玩家"方向，指哪打哪。
+  // 直接把枪管 -Z 轴用四元数对到"枪口→玩家"方向，指哪打哪。
+  // 注意：调用前 group 的位置与朝向必须已经写入并 updateMatrixWorld，
+  // 否则取到的是上一帧的世界矩阵，枪会在手里来回抽搐。
   aimGun(player, k) {
     const g = this.gun;
     if (!g) return;
     k = Math.max(0, Math.min(1, k));
-    this.group.updateMatrixWorld(true);
     const gp = new THREE.Vector3();
     g.getWorldPosition(gp);
     const dirP = new THREE.Vector3(player.pos.x, player.pos.y + 1.15, player.pos.z)
@@ -532,8 +538,10 @@ export class Enemy {
     const pq = new THREE.Quaternion();
     g.parent.getWorldQuaternion(pq);
     const qLocal = pq.invert().multiply(qAim);
-    const qRest = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.gunBase.rx, 0, 0));
-    g.quaternion.copy(qRest.slerp(qLocal, k));
+    // 待机姿态：抬起量抬满（rx + lift），但保留素材原有的偏转，
+    // 这样从"斜持戒备"到"平举瞄准"是绕肩部同一支点的一条弧线，不会先横甩再翻上来。
+    const qRest = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.gunBase.rx + 0.45, this.gunBase.ry, this.gunBase.rz));
+    g.quaternion.copy(qRest).slerp(qLocal, k);
     g.position.y = this.gunBase.y + 0.06 * k;
   }
 
@@ -542,26 +550,38 @@ export class Enemy {
     const accuracy = this.tier === 2 ? 0.86 : this.tier === 1 ? 0.72 : 0.58;
     const distFactor = Math.max(0.35, 1 - dist / 42);
     const hitChance = accuracy * distFactor;
-    // 先把枪管完全对准玩家再取枪口世界坐标，
-    // 保证弹道起点、方向与枪管视觉朝向完全一致
-    this.aimGun(player, 1);
+    // 直接用"当前已经渲染出来的枪管朝向"作为弹道方向：
+    // 不再在开火瞬间强行把枪拧到 aimT=1（那会让枪在手里瞬间跳一下、也能看到枪口和弹道错开），
+    // 而是让子弹和屏幕上这根枪管严丝合缝。
     const muzzle = new THREE.Vector3();
+    const gunDir = new THREE.Vector3(0, 0, -1);
     if (this.gun) {
       this.group.updateMatrixWorld(true);
       const ml = this.gun.userData.muzzle;
       muzzle.copy(ml ? ml : new THREE.Vector3(0, 0.012, -0.62));
       this.gun.localToWorld(muzzle);
+      gunDir.transformDirection(this.gun.matrixWorld);
     } else {
       muzzle.copy(this.eyePos).add(new THREE.Vector3(-Math.sin(this.yaw) * 0.55, -0.3, -Math.cos(this.yaw) * 0.55));
+      gunDir.set(-Math.sin(this.yaw), -0.15, -Math.cos(this.yaw)).normalize();
     }
     const targetHead = new THREE.Vector3(player.pos.x, player.pos.y + (Math.random() < 0.22 ? player.eyeH : 1.05), player.pos.z);
-    const dir = targetHead.clone().sub(muzzle).normalize();
+    // 弹道方向就是枪管方向。aimGun 已让枪管指向玩家（aimT 收敛到 1），
+    // 所以这里既保证"枪和子弹一条线"，命中与否完全交给下面的随机散布决定。
+    // 散布做成"绕枪管轴的小锥角"：沿两条垂直切向偏移、再沿枪管方向前推后归一化，
+    // 这样弹道永远紧贴枪管，不会像逐分量加噪声那样在斜向被放大成 15° 的明显错位。
+    const dir = gunDir.clone();
     const hit = Math.random() < hitChance;
-    const spread = hit ? 0.014 : 0.16;
-    dir.x += (Math.random() - 0.5) * spread * 2;
-    dir.y += (Math.random() - 0.5) * spread * 2;
-    dir.z += (Math.random() - 0.5) * spread * 2;
-    dir.normalize();
+    const spread = hit ? 1 : 11;                       // 单位：毫弧度（1000mrad ≈ 57°）
+    if (spread > 0) {
+      // 构造与枪管垂直的两个切向基
+      const up0 = Math.abs(gunDir.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      const t1 = new THREE.Vector3().crossVectors(gunDir, up0).normalize();
+      const t2 = new THREE.Vector3().crossVectors(gunDir, t1).normalize();
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * spread * 0.001;
+      dir.addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r).normalize();
+    }
 
     let endPoint = null, endDist = 60;
     const wall = g.world.raycast(muzzle, dir, 60);

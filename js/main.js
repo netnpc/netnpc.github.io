@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031212449';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031212449';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031212449';
-import { HUD } from './ui.js?v=20261031212449';
-import { Input } from './input.js?v=20261031212449';
-import { Sfx } from './audio.js?v=20261031212449';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031212449';
+import * as THREE from '../vendor/three.module.min.js?v=20261031221244';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031221244';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031221244';
+import { HUD } from './ui.js?v=20261031221244';
+import { Input } from './input.js?v=20261031221244';
+import { Sfx } from './audio.js?v=20261031221244';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031221244';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -740,10 +740,12 @@ class Game {
 
     // 两把枪的机瞄高度不同：AK 用照门，沙漠之鹰用套筒顶部肋条
     // rest 为腰射时的枪身位置（偏右下，符合经典 CS 手感）；
-    // 但朝向由 alignBarrel 校正，保证枪管指向屏幕中心（准星在枪管延长线上）
+    // 但朝向由下面的反解校正，保证枪口正落在准星正下方的轴线上
+    // rest.y 比旧版抬高 0.05：反解会把枪口压到准星下方，若不抬高，
+    // 枪身后半截（枪托/握把）会顶到屏幕底边被裁掉，看起来像断了一截。
     const sights = p.weapon === 'rifle'
-      ? { rest: [0.040, -0.125, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
-      : { rest: [0.048, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
+      ? { rest: [0.040, -0.075, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
+      : { rest: [0.048, -0.080, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
     const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
     // 竖屏时相机水平视野窄：武器整体缩小 + 后移，避免枪身糊满下半屏
     const portrait = this.camera.aspect < 1 ? 1 : 0;
@@ -765,31 +767,32 @@ class Game {
     y += (ay0 - y) * a;
     z += (az0 * dolly - z) * a;
 
-    // ---- 枪身姿态：让准星落在枪管的延长线上 ----
-    // 经典 FPS 的构图是"枪待在右下角，枪管延长线穿过准星"，
-    // 而不是把枪头顶到准星上。因此反解目标点取在枪口前方沿枪管轴线
-    // 再延伸 ext 的位置：ext 大（腰射）时准星压在枪管延长线上、枪口在准星下侧；
-    // ext→0（开镜）时目标点退化为枪口本身，机瞄精确归位。
+    // 枪把（枪身支点）在腰射时右移一点：枪口保持不动，枪身向右下展开，
+    // 视觉上枪的轮廓更完整、更有体积感。开镜时归零，保证机瞄居中。
+    x += (p.weapon === 'rifle' ? 0.032 : 0.026) * (1 - a);
+
+    // ---- 枪身姿态：让枪口落在准星正下方 ----
+    // 目标：把枪口锚点搬到"准星正下方 offsetY"的位置（屏幕正下方一点点），
+    // 同时枪管轴线竖直向上穿过准星——即枪口在准星的正下方、同一竖线上。
+    // 开镜时 offsetY→0，枪口退化为精确压在准星上，即机瞄。
     // 欧拉序 XYZ 下俯仰与横摆互相耦合、素材局部轴向不易硬推，
     // 所以直接在真实相机投影里反解：把候选变换写进 root，读 matrixWorld 投影，
-    // 用一维割线法让目标点的投影 x、y 都落到 0。
+    // 用一维割线法让枪口的投影 x 落到 0、y 落到 offsetY。
     const axis = root.userData.axis || { x: 0, y: 0.02, z: -0.6, rear: 0 };
     const kick = this.recoil * 0.14;
     const baseRotZ = (p.weapon === 'rifle' ? 0.02 : 0.015) * (1 - a);
-    // 枪管方向（rear → muzzle，局部坐标）。rear 与 muzzle 的 y 相同，y 分量为 0。
-    const _dir = new THREE.Vector3(
-      (axis.x || 0) - 0, 0, axis.z - (axis.rear || 0)).normalize();
     const _p = new THREE.Vector3();
-    const EXT = 2.2;                       // 腰射时目标点在枪口前方的延伸距离（局部单位）
-    const ext = EXT * (1 - a);
-    // 把 (pos, rx, ry, rz) 实际写进 root 并返回"目标点"投影
+    // 腰射时枪口停在准星下方的屏幕比例（0.16 ≈ 向下 16% 半屏高），开镜归零。
+    // 步枪长、可以停得低一些；手枪短，低了就和准星脱节，所以小一点。
+    // 腰射时枪口停在准星下方的屏幕比例（0.16 ≈ 向下 16% 半屏高），开镜归零。
+    // 步枪长、可以停得低一些；手枪短，低了就和准星脱节，所以小一点。
+    const offY = (p.weapon === 'rifle' ? 0.135 : 0.105) * (1 - a);
+    // 把 (pos, rx, ry, rz) 实际写进 root 并返回枪口投影（NDC）
     const project = (px, py, pz, rx, ry, rz) => {
       root.position.set(px, py, pz);
       root.rotation.set(rx, ry, rz);
       root.updateMatrixWorld(true);
-      _p.set(axis.x || 0, axis.y, axis.z)
-        .addScaledVector(_dir, ext)
-        .applyMatrix4(root.matrixWorld).project(this.wCam);
+      _p.set(axis.x || 0, axis.y, axis.z).applyMatrix4(root.matrixWorld).project(this.wCam);
       return _p;
     };
     // 一维割线法：单调求解 f(t)=0
@@ -806,16 +809,14 @@ class Game {
       }
       return b0;
     };
-    // 交叉迭代：横向解 rot.y、纵向解 rot.x。
+    // 交叉迭代：横向解 rot.y（让枪口横坐标落到屏幕中心），纵向解 rot.x（落到 offsetY）。
     // 表现层偏移（后坐 / 换弹 / 走动）在反解时就一并计入，解出来即最终呈现。
-    // 腰射只抬到 92%（mix），枪口略沉一点更贴近经典 CS 构图；开镜 mix=1 为精确解。
-    // 延伸目标点让所需转角很小（只需枪管方向对准相机），竖屏也不再需要强转限幅。
     const mix = THREE.MathUtils.lerp(0.92, 1, a);
     let pitchTo = 0.16, yawTo = 0;
     for (let i = 0; i < 8; i++) {
       yawTo = solve((t) => project(x, y, z, pitchTo * mix + kick + reloadRoll * 0.6, t * mix + reloadRoll * 0.25, baseRotZ).x,
         yawTo, -1.3, 1.3);
-      pitchTo = solve((t) => project(x, y, z, t * mix + kick + reloadRoll * 0.6, yawTo * mix + reloadRoll * 0.25, baseRotZ).y,
+      pitchTo = solve((t) => project(x, y, z, t * mix + kick + reloadRoll * 0.6, yawTo * mix + reloadRoll * 0.25, baseRotZ).y + offY * mix,
         pitchTo, -1.0, 1.0);
     }
 
