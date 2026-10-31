@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031194851';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031194851';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031194851';
-import { HUD } from './ui.js?v=20261031194851';
-import { Input } from './input.js?v=20261031194851';
-import { Sfx } from './audio.js?v=20261031194851';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031194851';
+import * as THREE from '../vendor/three.module.min.js?v=20261031201647';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031201647';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031201647';
+import { HUD } from './ui.js?v=20261031201647';
+import { Input } from './input.js?v=20261031201647';
+import { Sfx } from './audio.js?v=20261031201647';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031201647';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -763,32 +763,31 @@ class Game {
     y += (ay0 - y) * a;
     z += (az0 * dolly - z) * a;
 
-    // 竖屏兜底：屏幕又窄又高时，光靠俯仰转不到准星（rot.x 要到 1.9 rad 才够），
-    // 强转会把手里的枪拧成横在画面中间、完全不像 CS。
-    // 这里只做小幅抬高，剩下的差距交给"枪口在准星正下方一点"来承担——
-    // 竖屏窄画幅本来就无法既保住右下角构图又把枪管顶到正中。
-    // 开镜后枪身移向中央，抬枪上限放开，同时把机位再抬一点，让枪管真正贴住准星。
-    if (portrait) {
-      const lift = Math.min(0.045, Math.max(0, (1 / this.camera.aspect - 0.62) * 0.032));
-      x += 0.005 * a;                       // 开镜时轻微扶正，别让枪身歪在左侧
-      y += lift * (1 - a) + 0.030 * a;      // 开镜另外抬一点，让枪管贴住准星
-    }
-
-    // ---- 枪身姿态：让枪管指向准星 ----
-    // 目标：把枪口锚点搬到屏幕正中（准星所在），同时枪托留在右下角。
-    // 欧拉序 XYZ 下俯仰与横摆互相耦合、素材局部轴向也不易硬推，
-    // 因此直接在真实相机投影里反解：先把候选变换写进 root，再读它的 matrixWorld，
-    // 用一维割线法让枪口投影的 x、y 都落到 0。与几何细节无关，收敛到亚像素。
+    // ---- 枪身姿态：让准星落在枪管的延长线上 ----
+    // 经典 FPS 的构图是"枪待在右下角，枪管延长线穿过准星"，
+    // 而不是把枪头顶到准星上。因此反解目标点取在枪口前方沿枪管轴线
+    // 再延伸 ext 的位置：ext 大（腰射）时准星压在枪管延长线上、枪口在准星下侧；
+    // ext→0（开镜）时目标点退化为枪口本身，机瞄精确归位。
+    // 欧拉序 XYZ 下俯仰与横摆互相耦合、素材局部轴向不易硬推，
+    // 所以直接在真实相机投影里反解：把候选变换写进 root，读 matrixWorld 投影，
+    // 用一维割线法让目标点的投影 x、y 都落到 0。
     const axis = root.userData.axis || { x: 0, y: 0.02, z: -0.6, rear: 0 };
     const kick = this.recoil * 0.14;
     const baseRotZ = (p.weapon === 'rifle' ? 0.02 : 0.015) * (1 - a);
+    // 枪管方向（rear → muzzle，局部坐标）。rear 与 muzzle 的 y 相同，y 分量为 0。
+    const _dir = new THREE.Vector3(
+      (axis.x || 0) - 0, 0, axis.z - (axis.rear || 0)).normalize();
     const _p = new THREE.Vector3();
-    // 把 (pos, rx, ry, rz) 实际写进 root 并返回枪口投影
+    const EXT = 2.2;                       // 腰射时目标点在枪口前方的延伸距离（局部单位）
+    const ext = EXT * (1 - a);
+    // 把 (pos, rx, ry, rz) 实际写进 root 并返回"目标点"投影
     const project = (px, py, pz, rx, ry, rz) => {
       root.position.set(px, py, pz);
       root.rotation.set(rx, ry, rz);
       root.updateMatrixWorld(true);
-      _p.set(axis.x || 0, axis.y, axis.z).applyMatrix4(root.matrixWorld).project(this.wCam);
+      _p.set(axis.x || 0, axis.y, axis.z)
+        .addScaledVector(_dir, ext)
+        .applyMatrix4(root.matrixWorld).project(this.wCam);
       return _p;
     };
     // 一维割线法：单调求解 f(t)=0
@@ -805,26 +804,17 @@ class Game {
       }
       return b0;
     };
-    // 交叉迭代：横向解 rot.y（总是精确），纵向解 rot.x。
+    // 交叉迭代：横向解 rot.y、纵向解 rot.x。
     // 表现层偏移（后坐 / 换弹 / 走动）在反解时就一并计入，解出来即最终呈现。
-    //
-    // 两个特殊处理：
-    // ① 腰射只抬到 92%（mix），枪口压在准星上、枪托仍在右下角，更贴近经典 CS 构图；
-    //    开镜时 mix=1，是精确解。
-    // ② 竖屏又窄又高：腰射想把枪口顶到准星需要 rot.x≈1.9rad，会把枪拧成横在画面中间，
-    //    完全不像 CS。所以竖屏腰射只解到"自然抬枪上限"，枪口落在准星正下方一点；
-    //    开镜时枪身已移到画面中央，限幅放开，精确归位。
-    // 求解目标就是"最终写进 root 的角度"（含 mix 缩放与表现层偏移），否则会被 mix 拉偏。
+    // 腰射只抬到 92%（mix），枪口略沉一点更贴近经典 CS 构图；开镜 mix=1 为精确解。
+    // 延伸目标点让所需转角很小（只需枪管方向对准相机），竖屏也不再需要强转限幅。
     const mix = THREE.MathUtils.lerp(0.92, 1, a);
-    // 竖屏限幅只在腰射阶段生效，开镜过程里平滑放开，保证开镜后精确归位
-    const pitchCap = portrait ? THREE.MathUtils.lerp(0.42, 1.55, a) : 1.5;
-    const maxPitch = pitchCap / mix;
     let pitchTo = 0.16, yawTo = 0;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 8; i++) {
       yawTo = solve((t) => project(x, y, z, pitchTo * mix + kick + reloadRoll * 0.6, t * mix + reloadRoll * 0.25, baseRotZ).x,
-        yawTo, -1.4 / mix, 1.4 / mix);
+        yawTo, -1.3, 1.3);
       pitchTo = solve((t) => project(x, y, z, t * mix + kick + reloadRoll * 0.6, yawTo * mix + reloadRoll * 0.25, baseRotZ).y,
-        pitchTo, -1.1 / mix, maxPitch);
+        pitchTo, -1.0, 1.0);
     }
 
     // 姿态：反解结果直接写入（已含后坐 / 换弹 / 走动的表现层偏移）
