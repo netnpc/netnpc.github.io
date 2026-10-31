@@ -235,18 +235,23 @@ export class World {
     const hi = this.quality === 'high';
     const th = this.map.theme;
 
-    // 天空
+    // 天空穹顶（半径留在相机远平面之内，避免被裁出黑洞）
     const sky = new THREE.Mesh(
-      new THREE.SphereGeometry(180, 24, 16),
-      new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, depthWrite: false })
+      new THREE.SphereGeometry(1200, 48, 28),
+      new THREE.MeshBasicMaterial({
+        map: skyTexture(), side: THREE.BackSide,
+        depthWrite: false, fog: false,
+      })
     );
+    sky.renderOrder = -1;
     S.add(sky);
+    this.sky = sky;
     S.fog = new THREE.Fog(this.map.fog.color, this.map.fog.near, this.map.fog.far);
 
-    // 地面
+    // 地面（远大于围墙范围，避免看到"地面边缘"的黑洞）
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(120, 120),
-      new THREE.MeshStandardMaterial({ map: concreteTexture(18), roughness: 0.95, metalness: 0.02, color: th.ground })
+      new THREE.PlaneGeometry(900, 900),
+      new THREE.MeshStandardMaterial({ map: concreteTexture(90), roughness: 0.95, metalness: 0.02, color: th.ground })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -291,12 +296,49 @@ export class World {
       this.scene.add(m); this.meshes.push(m);
       const b = new THREE.Box3().setFromObject(m);
       this.colliders.push({ minX: b.min.x, maxX: b.max.x, minY: b.min.y, maxY: b.max.y, minZ: b.min.z, maxZ: b.max.z });
-      // 箱门细节（简单线条）
-      const doorMat = new THREE.MeshStandardMaterial({ color: 0x2c2f34, roughness: 0.8, metalness: 0.35 });
+      // 箱门细节：直接画在箱体表面（不额外加悬空几何体，避免远处出现黑色大方块）
+      const longAxisIsX = w >= d;
+      const doorMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: 0.72, metalness: 0.4,
+        map: (() => {
+          const c = document.createElement('canvas');
+          c.width = c.height = 128;
+          const ctx = c.getContext('2d');
+          // 门板底色：比箱体略深一点，但绝不是纯黑
+          const base = new THREE.Color(color).multiplyScalar(0.82);
+          ctx.fillStyle = '#' + base.getHexString();
+          ctx.fillRect(0, 0, 128, 128);
+          // 门缝与边框
+          ctx.strokeStyle = 'rgba(0,0,0,.42)'; ctx.lineWidth = 3;
+          ctx.strokeRect(6, 6, 116, 116);
+          ctx.beginPath(); ctx.moveTo(64, 6); ctx.lineTo(64, 122); ctx.stroke();
+          // 四角铰链
+          ctx.fillStyle = 'rgba(0,0,0,.3)';
+          for (const [hx, hy] of [[10, 10], [112, 10], [10, 112], [112, 112]]) {
+            ctx.fillRect(hx - 5, hy - 5, 10, 10);
+          }
+          // 门锁杆
+          ctx.fillStyle = 'rgba(190,198,208,.6)';
+          ctx.fillRect(50, 8, 4, 112);
+          ctx.fillRect(74, 8, 4, 112);
+          const t = new THREE.CanvasTexture(c);
+          t.colorSpace = THREE.SRGBColorSpace;
+          return t;
+        })(),
+      });
       for (const sgn of [-1, 1]) {
-        const door = new THREE.Mesh(new THREE.BoxGeometry(w * 0.47, h * 0.86, 0.05), doorMat);
-        door.position.set(0, 0, sgn * (d / 2 + 0.02));
-        m.add(door);
+        for (const half of [-1, 1]) {
+          const dw = (longAxisIsX ? d : w) * 0.46, dh = h * 0.86;
+          const door = new THREE.Mesh(new THREE.PlaneGeometry(dw, dh), doorMat);
+          if (longAxisIsX) {
+            door.position.set(sgn * (w / 2 + 0.006), 0, half * (d * 0.24));
+            door.rotation.y = sgn * Math.PI / 2;
+          } else {
+            door.position.set(half * (w * 0.24), 0, sgn * (d / 2 + 0.006));
+            door.rotation.y = sgn > 0 ? 0 : Math.PI;
+          }
+          m.add(door);
+        }
       }
       return m;
     };
@@ -430,8 +472,11 @@ export class World {
 
     this.map.layout({ container, crate, low, plat, lamps, targets, centerMarkings, ring, tower, pickCrate, hi });
 
-    // 远处背景楼体（剪影）
-    const bgMat = new THREE.MeshStandardMaterial({ color: 0x7d8b98, roughness: 1, metalness: 0 });
+    // 远处背景楼体（剪影）。放在雾的 far 之外，靠雾色自然溶解，
+    // 材质用 MeshBasicMaterial：不受光照方向影响，不会出现背光面全黑，
+    // 也避免标准材质在阴影相机范围外的诡异着色。
+    const bgColor = new THREE.Color(this.map.fog.color).multiplyScalar(0.94);
+    const bgMat = new THREE.MeshBasicMaterial({ color: bgColor, fog: true });
     for (let i = 0; i < 34; i++) {
       const a = (i / 34) * Math.PI * 2 + 0.2;
       const r = 78 + Math.random() * 30;
@@ -441,6 +486,21 @@ export class World {
       b.rotation.y = Math.random() * Math.PI;
       S.add(b);
     }
+    this._bgMeshes = S.children.filter((o) => o.material === bgMat);
+
+    // 更远处的第二圈天际线，密度更高、颜色更贴近雾色，制造层次
+    const farColor = new THREE.Color(this.map.fog.color).lerp(new THREE.Color(0xffffff), 0.16);
+    const farMat = new THREE.MeshBasicMaterial({ color: farColor, fog: true });
+    for (let i = 0; i < 46; i++) {
+      const a = (i / 46) * Math.PI * 2 + 0.05;
+      const r = 150 + Math.random() * 60;
+      const h = 12 + Math.random() * 30;
+      const b = new THREE.Mesh(new THREE.BoxGeometry(10 + Math.random() * 14, h, 10 + Math.random() * 14), farMat);
+      b.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
+      b.rotation.y = Math.random() * Math.PI;
+      S.add(b);
+    }
+    this._farMeshes = S.children.filter((o) => o.material === farMat);
   }
 
   // 射线与碰撞盒求交

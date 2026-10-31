@@ -130,29 +130,49 @@ export function targetTexture() {
   return t;
 }
 
+// 程序化天空球：渐变 + 云，用 512 宽贴图，避免低分辨率在球面上拉伸出色带/黑块
 export function skyTexture() {
-  const w = 64, h = 256, c = document.createElement('canvas');
+  const w = 1024, h = 512, c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
+  // 竖直渐变：天顶深蓝 → 地平线雾色
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, '#3f7fc0');
-  g.addColorStop(.34, '#79b0dd');
-  g.addColorStop(.55, '#bcd4e6');
-  g.addColorStop(.62, '#e8e2d2');
-  g.addColorStop(.70, '#c7baa2');
-  g.addColorStop(1, '#8c8574');
+  g.addColorStop(0.00, '#2f6fb5');
+  g.addColorStop(0.18, '#4d8fd0');
+  g.addColorStop(0.34, '#7ab3de');
+  g.addColorStop(0.46, '#a8cbe6');
+  g.addColorStop(0.50, '#c8dbea');   // 地平线
+  g.addColorStop(0.56, '#b7b6ad');
+  g.addColorStop(0.72, '#8d8878');
+  g.addColorStop(1.00, '#6d6a5e');
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  // 淡淡的云带
-  for (let i = 0; i < 60; i++) {
-    const y = Math.random() * h * 0.45;
-    ctx.fillStyle = `rgba(255,255,255,${(0.05 + Math.random() * 0.14).toFixed(2)})`;
+
+  // 高空细云（多层，横向拉伸，只出现在天空上半部）
+  for (let i = 0; i < 220; i++) {
+    const t = Math.pow(Math.random(), 1.7);
+    const y = t * h * 0.44;
+    const rw = 20 + Math.random() * 150 * (1 - t * 0.6);
+    const rh = 3 + Math.random() * 14 * (1 - t * 0.5);
+    const a = (0.03 + Math.random() * 0.11) * (1 - t * 0.5);
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
     ctx.beginPath();
-    ctx.ellipse(Math.random() * w, y, 8 + Math.random() * 30, 2 + Math.random() * 6, 0, 0, 7);
+    ctx.ellipse(Math.random() * w, y, rw, rh, 0, 0, 7);
     ctx.fill();
   }
+  // 地平线附近的雾带（让天地接缝自然）
+  const hz = ctx.createLinearGradient(0, h * 0.42, 0, h * 0.55);
+  hz.addColorStop(0, 'rgba(220,232,240,0)');
+  hz.addColorStop(0.6, 'rgba(224,232,236,0.42)');
+  hz.addColorStop(1, 'rgba(200,205,200,0)');
+  ctx.fillStyle = hz; ctx.fillRect(0, h * 0.42, w, h * 0.14);
+
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
   t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.anisotropy = 4;
+  t.generateMipmaps = true;
   return t;
 }
 

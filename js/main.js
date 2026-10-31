@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031005708';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031005708';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031005708';
-import { HUD } from './ui.js?v=20261031005708';
-import { Input } from './input.js?v=20261031005708';
-import { Sfx } from './audio.js?v=20261031005708';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031005708';
+import * as THREE from '../vendor/three.module.min.js?v=20261031103829';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031103829';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031103829';
+import { HUD } from './ui.js?v=20261031103829';
+import { Input } from './input.js?v=20261031103829';
+import { Sfx } from './audio.js?v=20261031103829';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031103829';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -73,7 +73,7 @@ class Game {
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.05, 200);
+    this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.05, 3000);
     this.camera.rotation.order = 'YXZ';
   }
 
@@ -129,7 +129,7 @@ class Game {
     this.impacts.forEach((i) => this.scene.remove(i.mesh));
     this.impacts = [];
     // 菜单相机对准地图中心
-    this.camera.far = 200;
+    this.camera.far = 3000;
     this.camera.updateProjectionMatrix();
   }
 
