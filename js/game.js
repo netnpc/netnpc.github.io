@@ -261,7 +261,7 @@ export class Enemy {
     this.speed = 2.6 + Math.random() * 0.5;
     this.aimT = 0;
     this.aiming = false;
-    this.lostT = 0;
+    this.visT = 0;
     this.muzzleT = 0;
     this._bob = 0;
 
@@ -380,16 +380,13 @@ export class Enemy {
     // 同伴阻挡不算遮挡
     const canSee = !wallHit && !player.dead;
     const fovOk = dist < 26;
-    // 视线迟滞：被掩体挡住后保持 0.5s 的"记忆"再判定丢失。
+    // 视线迟滞：丢视线 0.5s 后仍保持"看到"（期间枪继续跟着末次目击点），
+    // 只有真正断开才进入 search。拿到视线则立刻恢复，不延迟反应。
     // 否则敌人贴着箱子边缘侧移时 canSee 每帧翻转，状态在 attack/search 之间高速抖动，
     // 枪就在"戒备"和"瞄准"两个姿态之间来回甩——看起来就是枪在手里乱转。
-    if (canSee && fovOk) {
-      this.lostT = 0;
-      this.seesPlayer = true;
-    } else if (this.seesPlayer) {
-      this.lostT += dt;
-      if (this.lostT > 0.5) this.seesPlayer = false;
-    }
+    this.visT = canSee && fovOk ? Math.max(0, this.visT - dt * 6) : this.visT + dt;
+    if (this.visT < 0.5) this.seesPlayer = true;
+    else if (this.seesPlayer && this.visT > 0.62) this.seesPlayer = false;
 
     if (this.seesPlayer) {
       this.lastSeen.copy(player.pos);
@@ -412,8 +409,16 @@ export class Enemy {
     } else if (this.moveGoal) {
       desiredYaw = Math.atan2(-(this.moveGoal.x - this.pos.x), -(this.moveGoal.z - this.pos.z));
     }
-    let dY = ((desiredYaw - this.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    this.yaw += dY * Math.min(1, dt * 7);
+    // 朝向：目标本身也做平滑。巡逻点一切换 targetYaw 会瞬间反号，
+    // 身体若按新目标直接追，会在原地"急转头"，带得枪管一起甩。
+    if (this._desYaw == null) this._desYaw = this.yaw;
+    let dY = ((desiredYaw - this._desYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    this._desYaw += dY * Math.min(1, dt * 4);
+    // 转身角速度上限 ~130°/s：再急的情况也只慢慢转过去，枪不会跟着甩。
+    // 下限 0.12：软渲染下 dt 可能到 0.17s，不能让限幅把转身速度吃成 1/3。
+    let dY2 = ((this._desYaw - this.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const maxTurn = Math.max(0.12, dt * 2.3);
+    this.yaw += Math.max(-maxTurn, Math.min(maxTurn, dY2));
 
     // 移动策略
     let mvX = 0, mvZ = 0;
@@ -511,10 +516,13 @@ export class Enemy {
     this.group.updateMatrixWorld(true);
 
     // 开火
-    if (this.state === 'attack' && this.seesPlayer) {
+    const aiming = this.state === 'attack' && this.seesPlayer;
+    // 抬枪速度以"起枪完成时间"计时，而不是按帧递增量：低帧率下也不会一步到位。
+    // 0.24s 完成举枪，是所有敌人一致的手感基准。
+    const aimStep = dt / 0.24;
+    if (aiming) {
       this.fireCd -= dt;
-      // 抬枪瞄准：枪管真实指向玩家（子弹从枪口射向玩家，视觉一致）
-      this.aimT = Math.min(1, this.aimT + dt * 5);
+      this.aimT = Math.min(1, this.aimT + aimStep);
       this.aimGun(player, this.aimT, dt);
       // 只在枪管基本转正后才扣扳机：弹道直接取枪管方向，
       // 若在 aimT 过渡途中开火，屏幕上的枪还没指过来、子弹却已经飞出去，就会"看起来不在一条线"。
@@ -528,12 +536,15 @@ export class Enemy {
     } else {
       // 收枪要慢、且瞄准点用"最后目击位置"而不是直接垂下枪口：
       // 即使状态短暂抖动，枪管指的目标也几乎不变，视觉上枪是稳的。
-      const decay = this.state === 'search' ? 1.5 : 3.5;
+      const decay = 1 / (this.state === 'search' ? 0.7 : 0.35);
       this.aimT = Math.max(0, this.aimT - dt * decay);
       const tgt = (this.hasLastSeen && this.aimT > 0.05) ? this.lastSeen : player.pos;
       this.aimGun({ pos: tgt }, this.aimT, dt);
       this.fireCd = Math.max(this.fireCd - dt, 0.25 + Math.random() * 0.4);
     }
+    // 注：手臂姿态由 assets.js 的两骨骼 IK 依据"枪在本地坐标里的位置"静态解算，
+    // 而枪是绕自身原点旋转的，手部关节不会跟着动。这里不再额外叠加手臂旋转，
+    // 否则会和 IK 结果打架、出现穿模。
   }
 
   // 把枪管对准玩家：k=0..1 在待机姿态与瞄准姿态之间插值。
@@ -562,7 +573,9 @@ export class Enemy {
     else this._gunQ.slerp(qT, 1 - Math.exp(-dt * 11));
     g.quaternion.copy(this._gunQ);
     const yT = this.gunBase.y + 0.06 * k;
-    g.position.y += (yT - g.position.y) * (1 - Math.exp(-dt * 11));
+    // 初始直接把高度对齐，之后平滑；否则第一帧从 0 拉到位会有一次垂直弹跳
+    if (this._gunPosInit) g.position.y += (yT - g.position.y) * (1 - Math.exp(-dt * 11));
+    else { g.position.y = yT; this._gunPosInit = true; }
   }
 
   shootAt(player, dist) {

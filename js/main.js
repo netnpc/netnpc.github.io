@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031225332';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031225332';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031225332';
-import { HUD } from './ui.js?v=20261031225332';
-import { Input } from './input.js?v=20261031225332';
-import { Sfx } from './audio.js?v=20261031225332';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031225332';
+import * as THREE from '../vendor/three.module.min.js?v=20261031232616';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031232616';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031232616';
+import { HUD } from './ui.js?v=20261031232616';
+import { Input } from './input.js?v=20261031232616';
+import { Sfx } from './audio.js?v=20261031232616';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031232616';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
