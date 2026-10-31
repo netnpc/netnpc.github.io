@@ -330,10 +330,10 @@ export class Input {
    */
   syncTouchSens() {
     const w = window.innerWidth || 400;
-    // 0.34 屏宽对应 π 弧度 → base = π / (0.34 * w)
-    // 横屏 844px：转 180° 约拖 287px；竖屏 390px：约拖 133px
-    const base = Math.PI / (0.34 * w);
-    this._touchBase = Math.max(0.0048, Math.min(0.030, base));
+    // 0.42 屏宽对应 π 弧度 → base = π / (0.42 * w)
+    // 比旧版（0.34 屏宽）更稳一点：横屏 844px 转身 180° 约拖 354px
+    const base = Math.PI / (0.42 * w);
+    this._touchBase = Math.max(0.0040, Math.min(0.024, base));
   }
   consumeFlag(name) {
     if (this[name]) { this[name] = false; return true; }

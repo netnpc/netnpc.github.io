@@ -495,10 +495,9 @@ export class Enemy {
     // 开火
     if (this.state === 'attack' && this.seesPlayer) {
       this.fireCd -= dt;
-      // 抬枪瞄准
+      // 抬枪瞄准：枪管真实指向玩家（子弹从枪口射向玩家，视觉一致）
       this.aimT = Math.min(1, this.aimT + dt * 6);
-      this.gun.rotation.x = this.gunBase.rx - 0.45 * this.aimT;
-      this.gun.position.y = this.gunBase.y + 0.06 * this.aimT;
+      this.aimGun(player, this.aimT);
       if (this.fireCd <= 0 && !player.dead) {
         const rate = this.tier === 2 ? 1.0 : this.tier === 1 ? 0.62 : 0.85;
         this.fireCd = rate * (0.85 + Math.random() * 0.5);
@@ -508,8 +507,7 @@ export class Enemy {
       }
     } else {
       this.aimT = Math.max(0, this.aimT - dt * 4);
-      this.gun.rotation.x = this.gunBase.rx - 0.45 * this.aimT;
-      this.gun.position.y = this.gunBase.y + 0.06 * this.aimT;
+      this.aimGun(player, this.aimT);
       this.fireCd = Math.max(this.fireCd - dt, 0.25 + Math.random() * 0.4);
     }
 
@@ -518,12 +516,35 @@ export class Enemy {
     this.group.rotation.y = this.yaw;
   }
 
+  // 把枪管对准玩家：k=0..1 在待机姿态与瞄准姿态之间插值。
+  // 之前只俯仰枪身、方向仍跟着身体走，玩家在侧面时子弹与枪管明显分叉；
+  // 现在直接把枪管 -Z 轴用四元数对到"枪口→玩家"方向，指哪打哪。
+  aimGun(player, k) {
+    const g = this.gun;
+    if (!g) return;
+    k = Math.max(0, Math.min(1, k));
+    this.group.updateMatrixWorld(true);
+    const gp = new THREE.Vector3();
+    g.getWorldPosition(gp);
+    const dirP = new THREE.Vector3(player.pos.x, player.pos.y + 1.15, player.pos.z)
+      .sub(gp).normalize();
+    const qAim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dirP);
+    const pq = new THREE.Quaternion();
+    g.parent.getWorldQuaternion(pq);
+    const qLocal = pq.invert().multiply(qAim);
+    const qRest = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.gunBase.rx, 0, 0));
+    g.quaternion.copy(qRest.slerp(qLocal, k));
+    g.position.y = this.gunBase.y + 0.06 * k;
+  }
+
   shootAt(player, dist) {
     const g = this.game;
     const accuracy = this.tier === 2 ? 0.86 : this.tier === 1 ? 0.72 : 0.58;
     const distFactor = Math.max(0.35, 1 - dist / 42);
     const hitChance = accuracy * distFactor;
-    // 枪口位置跟随实际模型（枪长/持握角度变了也不会错位）
+    // 先把枪管完全对准玩家再取枪口世界坐标，
+    // 保证弹道起点、方向与枪管视觉朝向完全一致
+    this.aimGun(player, 1);
     const muzzle = new THREE.Vector3();
     if (this.gun) {
       this.group.updateMatrixWorld(true);

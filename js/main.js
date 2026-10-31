@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031201647';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031201647';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031201647';
-import { HUD } from './ui.js?v=20261031201647';
-import { Input } from './input.js?v=20261031201647';
-import { Sfx } from './audio.js?v=20261031201647';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031201647';
+import * as THREE from '../vendor/three.module.min.js?v=20261031212449';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031212449';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031212449';
+import { HUD } from './ui.js?v=20261031212449';
+import { Input } from './input.js?v=20261031212449';
+import { Sfx } from './audio.js?v=20261031212449';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031212449';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -742,13 +742,15 @@ class Game {
     // rest 为腰射时的枪身位置（偏右下，符合经典 CS 手感）；
     // 但朝向由 alignBarrel 校正，保证枪管指向屏幕中心（准星在枪管延长线上）
     const sights = p.weapon === 'rifle'
-      ? { rest: [0.055, -0.125, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
-      : { rest: [0.062, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
+      ? { rest: [0.040, -0.125, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
+      : { rest: [0.048, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
     const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
     // 竖屏时相机水平视野窄：武器整体缩小 + 后移，避免枪身糊满下半屏
     const portrait = this.camera.aspect < 1 ? 1 : 0;
-    const sc = (0.56 + 0.44 * fit) * (1 - 0.22 * portrait);
-    const dolly = 1 + 0.3 * portrait;   // 距离系数（更远）
+    // 手枪比步枪短很多，用同一套尺寸会显得又大又近、糊住下半屏，单独收一档
+    const wScale = p.weapon === 'rifle' ? 1 : 0.86;
+    const sc = (0.56 + 0.44 * fit) * (1 - 0.22 * portrait) * wScale;
+    const dolly = (1 + 0.3 * portrait) * (p.weapon === 'rifle' ? 1 : 1.12);
     root.scale.setScalar(sc);
 
     const [rx0, ry0, rz0] = sights.rest;

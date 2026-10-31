@@ -346,95 +346,110 @@ function addArms(g, opt) {
 }
 
 export function buildPistol() {
-  // ---- Desert Eagle .50AE：固定枪管 + 大型套筒 + 粗壮握把 ----
+  // ---- Desert Eagle .50AE（重制）：梯形套筒 + 露出多边形枪管 + 胡桃木握把 ----
   const g = new THREE.Group();
-  const slide = mat(0x596068, 0.4, 0.86);    // 不锈钢套筒
-  const slideD = mat(0x40454c, 0.44, 0.82);  // 套筒侧壁
-  const dark = mat(0x24272b, 0.56, 0.7);     // 发黑小件
-  const frame = mat(0x3a3e44, 0.5, 0.78);    // 下机匣
-  const gripM = new THREE.MeshStandardMaterial({ color: 0x1c1e21, roughness: 0.82, metalness: 0.14 });
-  const steel = mat(0x828790, 0.3, 0.9);
+  const slideTop = mat(0x767d86, 0.42, 0.72);    // 套筒顶面：拉丝钢（低反射，别成白条）
+  const slideSide = mat(0x3d434a, 0.5, 0.78);    // 套筒侧壁：哑光深钢
+  const dark = mat(0x1d2024, 0.6, 0.66);         // 发黑凹槽 / 小件
+  const frame = mat(0x2e3238, 0.55, 0.74);       // 下机匣
+  const gripM = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.86, metalness: 0.08 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x4a2c17, roughness: 0.68, metalness: 0.03 }); // 胡桃木
+  const steel = mat(0x8d939b, 0.34, 0.86);
+  const grey = mat(0x63686f, 0.4, 0.84);         // 击锤 / 扳机
 
-  // ---- 套筒主体：前段窄（护住固定枪管）、后段宽（容纳枪机） ----
-  g.add(box(0.07, 0.056, 0.175, slide, 0, 0.004, 0.1));    // 后段宽套筒
-  g.add(box(0.062, 0.05, 0.155, slide, 0, 0.002, -0.06));   // 前段套筒
-  // 套筒两侧下缘斜面（Deagle 的梯形断面）
-  for (const sx of [-1, 1]) {
-    g.add(box(0.008, 0.02, 0.3, slideD, sx * 0.036, -0.012, 0.01, 0, 0, sx * 0.35));
-  }
-  // 后段防滑纹
-  for (let i = 0; i < 6; i++) g.add(box(0.074, 0.042, 0.0055, dark, 0, 0.004, 0.15 + i * 0.0115));
-  // 前段泄气槽
-  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++)
-    g.add(box(0.0035, 0.012, 0.026, dark, sx * 0.0315, 0.014, -0.09 - i * 0.03));
+  // ---- 枪管：粗壮多边形桶，明显露出于套筒之前 ----
+  const barrelCore = cyl(0.0225, 0.0225, 0.135, steel, 8);
+  barrelCore.rotation.x = Math.PI / 2;
+  barrelCore.rotation.z = Math.PI / 8;
+  barrelCore.position.set(0, 0.014, -0.205); g.add(barrelCore);
+  g.add(box(0.026, 0.006, 0.13, slideTop, 0, 0.035, -0.205));                  // 枪管顶部平台
+  for (const sx of [-1, 1]) for (let i = 0; i < 4; i++)                        // 泄气孔
+    g.add(box(0.003, 0.007, 0.007, dark, sx * 0.0215, 0.016, -0.168 - i * 0.024));
 
-  // ---- 固定枪管（.50 大口径，露出于套筒之前） ----
-  const barrel = cyl(0.0235, 0.0235, 0.13, slide, 14);
-  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.012, -0.185); g.add(barrel);
-  // 枪管顶部平台
-  g.add(box(0.03, 0.014, 0.13, slide, 0, 0.033, -0.185));
-  // 枪口 + 内膛
-  const bore = cyl(0.0245, 0.0245, 0.022, steel, 14);
-  bore.rotation.x = Math.PI / 2; bore.position.set(0, 0.012, -0.252); g.add(bore);
-  const boreIn = cyl(0.0175, 0.0175, 0.03, mat(0x08090b, 0.95, 0.2), 12);
-  boreIn.rotation.x = Math.PI / 2; boreIn.position.set(0, 0.012, -0.256); g.add(boreIn);
+  // ---- 枪口冠 + 深膛 ----
+  const crown = cyl(0.0255, 0.0255, 0.016, dark, 16);
+  crown.rotation.x = Math.PI / 2; crown.position.set(0, 0.014, -0.275); g.add(crown);
+  const boreIn = cyl(0.0155, 0.0155, 0.03, mat(0x050607, 0.96, 0.15), 14);
+  boreIn.rotation.x = Math.PI / 2; boreIn.position.set(0, 0.014, -0.272); g.add(boreIn);
 
-  // ---- 顶部瞄准肋条（Deagle 标志性的锯齿散热肋） ----
-  g.add(box(0.024, 0.012, 0.235, steel, 0, 0.042, -0.075));
-  for (let i = 0; i < 8; i++) g.add(box(0.028, 0.006, 0.014, dark, 0, 0.05, -0.17 + i * 0.024));
-  // 前准星 / 后照门（梯形，两片）
-  g.add(box(0.01, 0.024, 0.016, dark, 0, 0.056, -0.228));
-  g.add(box(0.026, 0.012, 0.014, dark, 0, 0.048, 0.172));
-  for (const sx of [-1, 1]) g.add(box(0.008, 0.02, 0.012, dark, sx * 0.014, 0.056, 0.172));
+  // ---- 套筒：梯形断面（顶窄底宽），前段收窄，后段斜防滑纹 ----
+  g.add(box(0.052, 0.016, 0.285, slideTop, 0, 0.034, 0.005));                  // 顶面
+  for (const sx of [-1, 1])                                                    // 顶侧 30° 斜面
+    g.add(box(0.020, 0.026, 0.285, slideTop, sx * 0.030, 0.023, 0.005, 0, 0, sx * 0.52));
+  g.add(box(0.068, 0.030, 0.170, slideSide, 0, 0.004, 0.100));                 // 后段侧壁
+  g.add(box(0.062, 0.026, 0.120, slideSide, 0, 0.001, -0.098));                // 前段侧壁
+  g.add(box(0.062, 0.020, 0.014, dark, 0, 0.000, -0.158, 0.35, 0, 0));         // 前缘斜切
+  for (let i = 0; i < 8; i++)                                                  // 后段斜纹
+    g.add(box(0.070, 0.026, 0.0045, dark, 0, 0.004, 0.128 + i * 0.0115, 0, -0.42, 0));
+  g.add(box(0.004, 0.016, 0.055, dark, 0.0345, 0.010, 0.045));                 // 抛壳口
 
-  // ---- 下机匣 / 扳机护圈 ----
-  g.add(box(0.054, 0.042, 0.22, frame, 0, -0.036, 0.03));
-  g.add(box(0.014, 0.011, 0.088, frame, 0, -0.083, -0.014));   // 护圈下缘
-  g.add(box(0.014, 0.046, 0.012, frame, 0, -0.06, -0.056));    // 护圈前柱
-  g.add(box(0.014, 0.044, 0.012, frame, 0, -0.058, 0.028));    // 护圈后柱
-  g.add(box(0.011, 0.042, 0.011, steel, 0, -0.056, -0.014, 0.14)); // 扳机
-  // 滑套卡榫 / 保险
-  g.add(box(0.008, 0.014, 0.03, dark, 0.036, -0.008, 0.06));
-  g.add(box(0.008, 0.012, 0.026, dark, -0.036, 0.006, 0.14));
+  // ---- 瞄具 ----
+  g.add(box(0.009, 0.022, 0.013, dark, 0, 0.052, -0.245));                     // 前准星
+  g.add(box(0.004, 0.004, 0.004, steel, 0, 0.064, -0.245));                    // 白点
+  g.add(box(0.028, 0.009, 0.014, dark, 0, 0.052, 0.160));                      // 照门座
+  for (const sx of [-1, 1]) g.add(box(0.007, 0.016, 0.011, dark, sx * 0.014, 0.062, 0.160));
 
-  // ---- 握把（粗壮，指槽 + 侧板） ----
-  g.add(box(0.048, 0.155, 0.072, gripM, 0, -0.132, 0.108, -0.3));
-  g.add(box(0.054, 0.1, 0.046, dark, 0, -0.132, 0.114, -0.3));    // 侧板
-  for (let i = 0; i < 3; i++)                                     // 指槽
-    g.add(box(0.052, 0.007, 0.058, dark, 0, -0.075 - i * 0.032, 0.09 + i * 0.011, -0.3));
-  g.add(box(0.058, 0.046, 0.082, frame, 0, -0.056, 0.148, -0.1)); // 握把与机匣过渡
-  g.add(box(0.052, 0.026, 0.046, frame, 0, 0.004, 0.196, -0.14)); // 海狸尾
-  g.add(box(0.05, 0.014, 0.03, gripM, 0, -0.212, 0.148, -0.3));   // 弹匣底板
+  // ---- 下机匣 + 护圈 + 扳机 ----
+  g.add(box(0.054, 0.036, 0.235, frame, 0, -0.034, 0.008));
+  for (let i = 0; i < 5; i++) g.add(box(0.048, 0.005, 0.007, dark, 0, -0.051, -0.05 + i * 0.015));
+  g.add(box(0.013, 0.010, 0.088, frame, 0, -0.080, -0.020));                   // 护圈下缘
+  g.add(box(0.013, 0.044, 0.011, frame, 0, -0.058, -0.060));                   // 护圈前柱
+  g.add(box(0.013, 0.042, 0.011, frame, 0, -0.056, 0.024));                    // 护圈后柱
+  g.add(box(0.008, 0.032, 0.008, grey, 0, -0.053, -0.016, 0.12));              // 扳机
 
-  // ---- 击锤（外露，后倾） ----
-  g.add(box(0.014, 0.03, 0.014, steel, 0, 0.036, 0.198, -0.42));
-  g.add(box(0.02, 0.012, 0.012, steel, 0, 0.05, 0.186, -0.42));
+  // ---- 握把：18° 握角 + 胡桃木侧板 + 前缘指槽 ----
+  const GA = -0.31;
+  g.add(box(0.046, 0.158, 0.070, gripM, 0, -0.126, 0.104, GA));
+  for (const sx of [-1, 1])                                                    // 木侧板
+    g.add(box(0.006, 0.118, 0.052, wood, sx * 0.025, -0.130, 0.102, GA));
+  for (let i = 0; i < 3; i++)                                                  // 指槽
+    g.add(box(0.048, 0.005, 0.046, dark, 0, -0.074 - i * 0.032, 0.084 + i * 0.010, GA));
+  g.add(box(0.056, 0.044, 0.082, frame, 0, -0.054, 0.140, -0.1));              // 握把过渡
+  g.add(box(0.052, 0.026, 0.048, frame, 0, 0.002, 0.190, -0.12));              // 海狸尾
+  g.add(box(0.050, 0.018, 0.040, dark, 0, -0.202, 0.140, GA));                 // 弹匣底板
 
-  // ---- 双手（右手握把 + 左手包覆，手臂） ----
-  const glove = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.85 });
-  const gloveL = new THREE.MeshStandardMaterial({ color: 0x33363b, roughness: 0.85 });
-  const sleeve = new THREE.MeshStandardMaterial({ color: 0x5d6650, roughness: 0.95 });
+  // ---- 控制件 ----
+  g.add(box(0.011, 0.028, 0.010, grey, 0, 0.034, 0.192, -0.42));               // 击锤
+  g.add(box(0.018, 0.009, 0.009, grey, 0, 0.047, 0.181, -0.42));
+  g.add(box(0.007, 0.012, 0.028, steel, 0.036, -0.008, 0.056));                // 滑套卡榫
+  g.add(box(0.007, 0.011, 0.020, dark, -0.036, 0.004, 0.136));                 // 弹匣扣
+  g.add(box(0.046, 0.018, 0.005, steel, 0, 0.024, 0.197));                     // 后盖铭牌
+
+  // ---- 双手：从后 / 下方包覆，不遮挡枪身与木侧板 ----
+  const glove = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.88, metalness: 0.05 });
+  const gloveL = new THREE.MeshStandardMaterial({ color: 0x32353a, roughness: 0.88, metalness: 0.05 });
+  const sleeve = new THREE.MeshStandardMaterial({ color: 0x556044, roughness: 0.95 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xb98a68, roughness: 0.85 });
-  // 右手（主手，包住握把）
-  const hd = new THREE.Mesh(new THREE.BoxGeometry(0.078, 0.105, 0.1), glove);
-  hd.position.set(0.004, -0.115, 0.108); hd.rotation.x = -0.3; g.add(hd);
-  const rthumb = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.03), glove);
-  rthumb.position.set(-0.035, -0.085, 0.088); rthumb.rotation.x = -0.35; g.add(rthumb);
-  // 左手（副手，从左侧包覆）
-  const hd2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.108, 0.098), gloveL);
-  hd2.position.set(-0.042, -0.135, 0.115); hd2.rotation.x = -0.3; hd2.rotation.z = 0.1; g.add(hd2);
-  const lthumb = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.026, 0.062), gloveL);
-  lthumb.position.set(-0.03, -0.072, 0.075); lthumb.rotation.x = -0.3; g.add(lthumb);
-  // 手腕
-  const wr = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.068, 0.048), skin);
-  wr.position.set(-0.014, -0.185, 0.182); wr.rotation.x = -0.42; g.add(wr);
-  // 小臂（向后下方）
-  const sl = new THREE.Mesh(new THREE.BoxGeometry(0.096, 0.104, 0.26), sleeve);
-  sl.position.set(-0.028, -0.245, 0.3); sl.rotation.x = 0.46; sl.rotation.z = -0.12; g.add(sl);
+  // 右手背（握把右侧靠后）
+  g.add(box(0.019, 0.096, 0.090, glove, 0.035, -0.128, 0.118, GA));
+  // 右手手指：从右侧绕过握把前缘，四节
+  for (let i = 0; i < 4; i++) {
+    const t = i / 3;                                   // 0=食指 1=小指
+    const yy = -0.086 - i * 0.0235;
+    const zz = 0.072 + i * 0.009;
+    // 指根（较粗）→ 指节（略细，向内弯）
+    g.add(box(0.026, 0.0135, 0.020, glove, 0.020, yy, zz + 0.006, GA));
+    g.add(box(0.022, 0.0115, 0.018, glove, 0.003, yy - 0.002, zz - 0.010, GA, 0, 0.18 * (1 - t)));
+    g.add(box(0.020, 0.0105, 0.016, glove, -0.012, yy - 0.004, zz - 0.024, GA, 0, 0.34 * (1 - t)));
+  }
+  // 右手拇指
+  g.add(box(0.019, 0.015, 0.046, glove, -0.029, -0.062, 0.086, -0.36, 0, 0.15));
+  // 左手：左侧抱住，位置更低
+  g.add(box(0.017, 0.084, 0.078, gloveL, -0.037, -0.152, 0.126, GA));
+  for (let i = 0; i < 3; i++) {
+    const yy = -0.118 - i * 0.024;
+    g.add(box(0.022, 0.012, 0.019, gloveL, -0.022, yy, 0.086 + i * 0.008, GA));
+    g.add(box(0.019, 0.010, 0.016, gloveL, -0.006, yy - 0.002, 0.072 + i * 0.008, GA, 0, -0.22));
+  }
+  g.add(box(0.017, 0.013, 0.040, gloveL, -0.025, -0.070, 0.100, -0.34, 0, 0.12));
+  // 手腕 + 小臂 + 袖口
+  g.add(box(0.068, 0.064, 0.045, skin, 0.004, -0.194, 0.164, -0.44));
+  g.add(box(0.092, 0.098, 0.255, sleeve, -0.004, -0.254, 0.290, 0.44, 0, -0.10));
+  g.add(box(0.098, 0.104, 0.028, sleeve, 0.010, -0.204, 0.194, 0.44, 0, -0.10));
 
   g.traverse((o) => { o.castShadow = true; });
-  // 枪管轴线锚点：用于让准星与枪口方向对齐（x=0 为枪管中心线，勿加横向偏移）
-  g.userData.axis = { x: 0, y: 0.012, z: -0.256, rear: 0.172 };
+  // 枪管轴线锚点：准星与枪口对齐用（x=0 为枪管中轴，勿加横向偏移）
+  g.userData.axis = { x: 0, y: 0.014, z: -0.272, rear: 0.172 };
   return g;
 }
 
