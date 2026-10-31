@@ -104,17 +104,22 @@ export class Input {
     // ---- 摇杆（仅左下触发区，用 Touch 事件） ----
     stickZone.addEventListener('touchstart', (e) => {
       if (!this.enabled) return;
+      // 点在开火键上时交给开火键自己处理，不要顺带触发摇杆
+      if (this.btnFire && this.btnFire.contains(e.target)) return;
       e.preventDefault();
       const t = e.changedTouches[0];
       if (this.stickId !== null) return;
       this.stickId = t.identifier;
       this.stickCX = t.clientX; this.stickCY = t.clientY;
+      // 半径跟随实际渲染尺寸，横屏/小屏下不会"推不动"
+      const br = this.stickBase ? this.stickBase.offsetWidth / 2 : 59;
+      this.stickBaseR = br || 59;
       if (this.stickBase) {
         this.stickBase.classList.remove('idle');
         this.stickBase.style.left = t.clientX + 'px';
         this.stickBase.style.top = t.clientY + 'px';
         this.stickBase.style.bottom = 'auto';
-        this.stickBase.style.margin = '-59px 0 0 -59px';
+        this.stickBase.style.margin = (-this.stickBaseR) + 'px 0 0 ' + (-this.stickBaseR) + 'px';
         this.stickBase.classList.add('active');
       }
       this.updateStick(t.clientX, t.clientY);
@@ -145,7 +150,7 @@ export class Input {
           if (this.stickBase) {
             this.stickBase.classList.remove('active');
             this.stickBase.classList.add('idle');
-            // 回到默认位置
+            // 回到默认位置（默认 left/bottom 由 CSS 定义，这里清掉内联值即可）
             this.stickBase.style.left = '';
             this.stickBase.style.top = '';
             this.stickBase.style.bottom = '';

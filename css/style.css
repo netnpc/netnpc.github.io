@@ -95,32 +95,58 @@ body.touchmode #hint{display:none}
   body.touchmode #bottomleft{top:calc(86px + env(safe-area-inset-top))}
   body.touchmode #bottomright{top:calc(84px + env(safe-area-inset-top))}
   body.touchmode #hint{display:none}
-  #stickBase{width:96px;height:96px;margin:-48px 0 0 -48px}
-  #btnFire{width:76px;height:76px;font-size:12px}
   .tbtn{width:42px;height:42px;font-size:17px}
-  #touchRight{bottom:calc(22px + env(safe-area-inset-bottom));right:calc(104px + env(safe-area-inset-right));gap:7px}
 }
 
 /* ---------- 移动端控制 ---------- */
 #touch{position:absolute;inset:0}
+/* 左侧控制区尺寸变量：竖屏大、横屏小；开火键在摇杆正下方 */
+body.touchmode{
+  --joyX: calc(78px + env(safe-area-inset-left));
+  --joyR: 59px;              /* 摇杆半径 */
+  --joyCY: calc(168px + env(safe-area-inset-bottom));  /* 摇杆圆心距底 */
+  --fireR: 44px;             /* 开火键半径 */
+  --fireCY: calc(64px + env(safe-area-inset-bottom));  /* 开火键圆心距底 */
+}
+@media (max-height:480px){
+  body.touchmode{
+    --joyX: calc(66px + env(safe-area-inset-left));
+    --joyR: 48px;
+    --joyCY: calc(134px + env(safe-area-inset-bottom));
+    --fireR: 38px;
+    --fireCY: calc(52px + env(safe-area-inset-bottom));
+  }
+}
 /* 摇杆触发区：仅占左下角一块方区，右侧大面积为视角滑动区 */
 #stickZone{position:absolute;left:0;bottom:0;width:46%;height:54%;pointer-events:auto}
 /* 常显摇杆提示：未触摸时半透明底座停在默认位置，让玩家知道左边可以走 */
 #stickBase{transition:opacity .18s}
 body.touchmode #stickBase.idle{opacity:.32}
 body.touchmode #stickBase.idle #stickKnob{background:rgba(255,255,255,.22)}
-#stickBase{position:absolute;left:calc(74px + env(safe-area-inset-left));bottom:calc(74px + env(safe-area-inset-bottom));width:118px;height:118px;margin:-59px 0 0 -59px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.16);opacity:0;transition:opacity .15s}
+#stickBase{position:absolute;left:var(--joyX,calc(78px + env(safe-area-inset-left)));bottom:var(--joyCY,calc(168px + env(safe-area-inset-bottom)));width:calc(var(--joyR,59px) * 2);height:calc(var(--joyR,59px) * 2);margin:calc(var(--joyR,59px) * -1) 0 0 calc(var(--joyR,59px) * -1);border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.16);opacity:0;transition:opacity .15s}
 #stickBase.active{opacity:1}
 #stickKnob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.5)}
-#touchRight{position:absolute;right:calc(122px + env(safe-area-inset-right));bottom:calc(32px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;pointer-events:auto;align-items:center}
+#touchRight{position:absolute;right:calc(24px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;pointer-events:auto;align-items:center}
+@media (max-height:480px){#touchRight{right:calc(24px + env(safe-area-inset-right));bottom:calc(70px + env(safe-area-inset-bottom));gap:6px}}
 .tbtn{width:48px;height:48px;border-radius:50%;background:rgba(12,16,22,.55);border:1px solid rgba(255,255,255,.22);color:#fff;font-size:19px;pointer-events:auto;backdrop-filter:blur(4px)}
 .tbtn.small{width:42px;height:42px;font-size:16px}
 .tbtn:active{background:rgba(255,255,255,.28)}
-#btnFire{position:absolute;right:calc(22px + env(safe-area-inset-right));bottom:calc(26px + env(safe-area-inset-bottom));width:88px;height:88px;border-radius:50%;border:2px solid rgba(255,80,80,.75);background:radial-gradient(circle,rgba(255,60,60,.35),rgba(255,60,60,.10));color:#fff;font-size:13px;font-weight:800;letter-spacing:1px;pointer-events:auto;backdrop-filter:blur(3px)}
+#btnFire{position:absolute;left:var(--joyX,calc(78px + env(safe-area-inset-left)));bottom:var(--fireCY,calc(64px + env(safe-area-inset-bottom)));width:calc(var(--fireR,44px) * 2);height:calc(var(--fireR,44px) * 2);margin:0 0 0 calc(var(--fireR,44px) * -1);border-radius:50%;border:2px solid rgba(255,80,80,.75);background:radial-gradient(circle,rgba(255,60,60,.35),rgba(255,60,60,.10));color:#fff;font-size:13px;font-weight:800;letter-spacing:1px;pointer-events:auto;backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #btnFire:active{background:radial-gradient(circle,rgba(255,80,80,.65),rgba(255,60,60,.25));transform:scale(.96)}
+/* 开火键按下反馈：外圈光晕 + 内圈脉冲 */
+#btnFire::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,80,80,.35);opacity:.55;transition:opacity .12s,inset .12s}
+#btnFire:active::after{opacity:1;inset:-10px;border-color:rgba(255,120,120,.85)}
+#btnFire:active{border-color:rgba(255,150,150,.95)}
+/* 摇杆上方的 MOVE 提示 */
+#stickHint{position:absolute;left:var(--joyX,calc(78px + env(safe-area-inset-left)));bottom:calc(var(--joyCY,168px) + var(--joyR,59px) + 6px);transform:translateX(-50%);font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.34);pointer-events:none;transition:opacity .2s}
+body.touchmode #stickHint{opacity:1}
+@media (max-height:480px){#stickHint{display:none}}
 /* 移动端：左上雷达，血量放在雷达下方，弹药移到右上角下方 */
 body.touchmode #radarWrap{width:84px;height:84px;left:calc(10px + env(safe-area-inset-left));top:calc(10px + env(safe-area-inset-top))}
-body.touchmode #bottomleft{left:calc(10px + env(safe-area-inset-left));bottom:auto;top:calc(102px + env(safe-area-inset-top));gap:2px}
+body.touchmode #bottomleft{left:calc(176px + env(safe-area-inset-left));bottom:calc(70px + env(safe-area-inset-bottom));top:auto;gap:2px}
+@media (max-height:480px){body.touchmode #bottomleft{left:calc(146px + env(safe-area-inset-left));bottom:calc(56px + env(safe-area-inset-bottom))}}
+/* 竖屏手机：横向没有空间并排，血条退回底部靠右 */
+@media (max-width:600px){body.touchmode #bottomleft{left:auto;right:calc(16px + env(safe-area-inset-right));bottom:calc(30px + env(safe-area-inset-bottom));align-items:flex-end}}
 body.touchmode .hpbar{width:92px;height:6px}
 body.touchmode #hpnum{font-size:16px;min-width:34px}
 body.touchmode .hpicon{font-size:13px}
