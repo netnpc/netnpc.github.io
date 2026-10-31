@@ -190,6 +190,12 @@ export class Input {
   _bindLookPointer() {
     this.lookPtr = null;
     this.lookPX = 0; this.lookPY = 0;
+    // 当前按在屏幕上的所有指针，用于判断 lookPtr 是否已失效
+    this._ptrAlive = new Set();
+    document.addEventListener('pointerdown', (e) => this._ptrAlive.add(e.pointerId), true);
+    const forget = (e) => this._ptrAlive.delete(e.pointerId);
+    document.addEventListener('pointerup', forget, true);
+    document.addEventListener('pointercancel', forget, true);
 
     document.addEventListener('pointerdown', (e) => {
       if (!this.enabled || e.pointerType !== 'touch') return;
@@ -197,10 +203,13 @@ export class Input {
       const zone = document.getElementById('stickZone');
       if (zone && zone.contains(e.target)) return;
       if (this._isUI(e.clientX, e.clientY)) return;
-      if (this.lookPtr === null) {
-        this.lookPtr = e.pointerId;
-        this.lookPX = e.clientX; this.lookPY = e.clientY;
+      // 旧指针若已失效（up 事件丢失）就抢占，否则会出现"此后怎么滑都没反应"
+      if (this.lookPtr !== null && this.lookPtr !== e.pointerId) {
+        const stale = this._ptrAlive && this._ptrAlive.has(this.lookPtr);
+        if (stale) return;   // 另一根手指确实还在按着，这次不接管
       }
+      this.lookPtr = e.pointerId;
+      this.lookPX = e.clientX; this.lookPY = e.clientY;
     }, { passive: true });
 
     document.addEventListener('pointermove', (e) => {
@@ -211,11 +220,11 @@ export class Input {
       this._accumLook(dx, dy);
     }, { passive: true });
 
-    const up = (e) => { if (e.pointerId === this.lookPtr) this.lookPtr = null; };
+    const up = (e) => { if (e.pointerId === this.lookPtr) this._flushLook(); };
     document.addEventListener('pointerup', up);
     document.addEventListener('pointercancel', up);
     // 页面切后台时释放
-    window.addEventListener('blur', () => { this.lookPtr = null; });
+    window.addEventListener('blur', () => this._flushLook());
   }
 
   /** 视角拖拽：无 PointerEvent 时的 Touch 事件兜底 */
@@ -254,14 +263,24 @@ export class Input {
     document.addEventListener('touchcancel', end);
   }
 
-  /** 视角增量统一入口：钳制 + 灵敏度 */
+  /**
+   * 视角增量统一入口：钳制 + 灵敏度。
+   * 单帧增量上限放宽到 240px：只在事件异常（手指瞬移/坐标跳变）时兜底，
+   * 正常的快速滑动（尤其掉帧时）不会再被截断，避免"划到一半卡住"。
+   */
   _accumLook(dx, dy) {
-    const cap = 160;
+    const cap = 240;
     const cd = Math.max(-cap, Math.min(cap, dx));
     const cdy = Math.max(-cap, Math.min(cap, dy));
     const s = this._touchBase * this.sens;
     this.lookDX += cd * s;
     this.lookDY += cdy * s;
+  }
+
+  /** 丢失 touchmove 时（如手指很快甩出屏幕）用合成事件补齐最后一段位移 */
+  _flushLook() {
+    this.lookPtr = null;
+    this._touchLookId = null;
   }
 
   // 判断屏幕坐标是否落在可交互按钮上（这些位置的触摸不再用于转身）
@@ -304,16 +323,17 @@ export class Input {
   }
 
   /**
-   * 根据屏幕的高度像素为触屏设置滑动灵敏度。
-   * 竖屏时虽然视野垂直角度不变，但同样的手指位移对应的"行数"更少，
-   * 若不补偿，玩家会觉得"怎么拖都抬不起枪口"。
+   * 触屏视角灵敏度：按屏幕宽度标定。
+   * 左右转视角是横向手势，屏幕越窄，同样的手指位移就该转得越多，
+   * 否则竖屏下会出现"怎么划都转不过来"。
+   * 目标：拖动约 0.34 个屏宽 ≈ 转身 180°，单手拇指一划即可转身。
    */
   syncTouchSens() {
-    const h = window.innerHeight || 800;
-    // 以 720px 高度为基准；竖屏(>1.15 比例)额外放大 25%
-    const ratio = h > window.innerWidth * 1.15 ? 1.25 : 1.0;
-    const k = Math.max(0.62, Math.min(1.9, 720 / h)) * ratio;
-    this._touchBase = 0.0052 * k;
+    const w = window.innerWidth || 400;
+    // 0.34 屏宽对应 π 弧度 → base = π / (0.34 * w)
+    // 横屏 844px：转 180° 约拖 287px；竖屏 390px：约拖 133px
+    const base = Math.PI / (0.34 * w);
+    this._touchBase = Math.max(0.0048, Math.min(0.030, base));
   }
   consumeFlag(name) {
     if (this[name]) { this[name] = false; return true; }

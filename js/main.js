@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031171017';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031171017';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031171017';
-import { HUD } from './ui.js?v=20261031171017';
-import { Input } from './input.js?v=20261031171017';
-import { Sfx } from './audio.js?v=20261031171017';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031171017';
+import * as THREE from '../vendor/three.module.min.js?v=20261031181829';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031181829';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031181829';
+import { HUD } from './ui.js?v=20261031181829';
+import { Input } from './input.js?v=20261031181829';
+import { Sfx } from './audio.js?v=20261031181829';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031181829';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -735,9 +735,11 @@ class Game {
     }
 
     // 两把枪的机瞄高度不同：AK 用照门，沙漠之鹰用套筒顶部肋条
+    // rest 为腰射时的枪身位置（偏右下，符合经典 CS 手感）；
+    // 但朝向由 alignBarrel 校正，保证枪管指向屏幕中心（准星在枪管延长线上）
     const sights = p.weapon === 'rifle'
       ? { rest: [0.055, -0.125, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
-      : { rest: [0.08, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
+      : { rest: [0.062, -0.13, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
     const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
     // 竖屏时相机水平视野窄：武器整体缩小 + 后移，避免枪身糊满下半屏
     const portrait = this.camera.aspect < 1 ? 1 : 0;
@@ -747,7 +749,6 @@ class Game {
 
     const [rx0, ry0, rz0] = sights.rest;
     const [ax0, ay0, az0] = sights.ads;
-    const baseRY = sights.ry;   // 枪身略微内收，让右侧侧向细节可见
     const adsRY = 0;
 
     let x = rx0 * fit * (1 - 0.3 * portrait) + bobX * (1 - a);
@@ -758,11 +759,46 @@ class Game {
     y += (ay0 - y) * a;
     z += (az0 * dolly - z) * a;
 
-    root.position.set(x, y, z);
+    // ---- 枪身姿态：让枪管指向准星 ----
+    // CS 的构图是"枪托在右下、枪管朝前上方收到准星"。
+    // 直接把枪口搬到屏幕中心：在 YXZ 顺序下可闭式反解 pitch / yaw。
+    // 旋转后枪口 = R(pitch,yaw)·(0, AY, AZ)，要求 x+R.x=0 且 y+R.y=0。
+    const axis = root.userData.axis || { y: 0.02, z: -0.6, rear: 0 };
     const kick = this.recoil * 0.14;
-    root.rotation.x = (p.weapon === 'rifle' ? 0.015 : 0.02) + kick + reloadRoll * 0.6;
-    root.rotation.z = 0.02 + reloadRoll * 0.5 + bobX * 1.4 * (1 - a) + this.recoil * 0.05;
-    root.rotation.y = baseRY + (adsRY - baseRY) * a + reloadRoll * 0.25;
+    const AY = axis.y * sc;              // 枪管相对枪身的高度（含缩放）
+    const AZ = axis.z * sc;              // 枪口前伸量（负数）
+    // 横向：x + AZ·sin(yaw) = 0
+    const sYaw = Math.max(-0.99, Math.min(0.99, -x / AZ));
+    const yawTo = Math.asin(sYaw);
+    // 纵向：y + AZ·(-sin(p)·cosYaw) + AY·cos(p) = 0
+    //   →  AY·cos(p) - AZ·cosYaw·sin(p) = -y
+    //   →  R·cos(p + φ) = -y ，其中 R=hypot(AY, AZ·cosYaw)，tan(φ)=AZ·cosYaw/AY
+    const cy = Math.cos(yawTo);
+    const B = -AZ * cy;                  // B 为正（AZ<0）
+    const R = Math.hypot(AY, B);
+    const phi = Math.atan2(B, AY);
+    let pitchTo = 0;
+    if (R > 1e-6) {
+      const c = Math.max(-1, Math.min(1, -y / R));
+      // 取离 0 最近的解，避免枪口大幅翻转
+      const cand1 = Math.acos(c) + phi;
+      const cand2 = -Math.acos(c) + phi;
+      const norm = (v) => Math.atan2(Math.sin(v), Math.cos(v));
+      const a1 = norm(cand1), a2 = norm(cand2);
+      pitchTo = Math.abs(a1) < Math.abs(a2) ? a1 : a2;
+    }
+    // 腰射做 92%：枪口压在准星上，同时枪身仍在右下角
+    const mix = THREE.MathUtils.lerp(0.92, 1, a);
+    const baseRY = yawTo * mix;
+    const baseRX = pitchTo * mix;
+
+    // 姿态：闭式解给出基准角度，再叠加后坐 / 换弹 / 走动的表现层偏移
+    root.rotation.x = baseRX + kick + reloadRoll * 0.6;
+    root.rotation.y = baseRY + reloadRoll * 0.25;
+    root.rotation.z = (p.weapon === 'rifle' ? 0.02 : 0.015) * (1 - a)
+      + reloadRoll * 0.5 + bobX * 1.2 * (1 - a) + this.recoil * 0.05;
+    root.position.set(x, y, z);
+    root.updateWorldMatrix(true, true);
 
     // 枪口火光：快速衰减（核心→光晕→熄灭），并同步点光源强度
     if (this.flashT > 0) {

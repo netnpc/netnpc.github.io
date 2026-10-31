@@ -296,6 +296,8 @@ export function buildRifle() {
   addArms(g, { front: [0.005, -0.085, -0.28], frontLen: 0.3, hand: 'grip', rear: [0, 0.0, 0.4] });
 
   g.traverse((o) => { o.castShadow = true; });
+  // 枪管轴线锚点：用于让准星与枪口方向对齐
+  g.userData.axis = { y: 0.018, z: -0.648, rear: -0.06 };
   return g;
 }
 
@@ -431,6 +433,8 @@ export function buildPistol() {
   sl.position.set(-0.028, -0.245, 0.3); sl.rotation.x = 0.46; sl.rotation.z = -0.12; g.add(sl);
 
   g.traverse((o) => { o.castShadow = true; });
+  // 枪管轴线锚点：用于让准星与枪口方向对齐
+  g.userData.axis = { y: 0.012, z: -0.256, rear: 0.172 };
   return g;
 }
 
