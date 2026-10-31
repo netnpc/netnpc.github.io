@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031232616';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031232616';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031232616';
-import { HUD } from './ui.js?v=20261031232616';
-import { Input } from './input.js?v=20261031232616';
-import { Sfx } from './audio.js?v=20261031232616';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031232616';
+import * as THREE from '../vendor/three.module.min.js?v=20261101012241';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261101012241';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261101012241';
+import { HUD } from './ui.js?v=20261101012241';
+import { Input } from './input.js?v=20261101012241';
+import { Sfx } from './audio.js?v=20261101012241';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261101012241';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -745,7 +745,7 @@ class Game {
     // 枪身后半截（枪托/握把）会顶到屏幕底边被裁掉，看起来像断了一截。
     const sights = p.weapon === 'rifle'
       ? { rest: [0.040, -0.110, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
-      : { rest: [0.048, -0.115, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
+      : { rest: [0.048, -0.115, -0.52], ads: [0.016, -0.150, -0.40], ry: 0.2 };
     const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
     // 竖屏时相机水平视野窄：武器整体缩小 + 后移，避免枪身糊满下半屏
     const portrait = this.camera.aspect < 1 ? 1 : 0;
@@ -753,7 +753,13 @@ class Game {
     const wScale = p.weapon === 'rifle' ? 1 : 0.86;
     const sc = (0.56 + 0.44 * fit) * (1 - 0.22 * portrait) * wScale;
     const dolly = (1 + 0.3 * portrait) * (p.weapon === 'rifle' ? 1 : 1.12);
-    root.scale.setScalar(sc);
+    // 竖屏下步枪不能再往后推：枪一远，反解为了把枪口压到准星下方就得大幅俯仰，
+    // 结果整支枪在窄画幅里立成一根竖柱。竖屏改成"略微拉近 + 降低 offY"。
+    const portRifleNear = (p.weapon === 'rifle' && portrait) ? 0.86 : 1;
+    // 开镜时手枪整体收小：机瞄读图需要"照门—准星—目标"三者同时入画，
+    // 枪身太大会把照门顶出屏幕。腰射保持原尺寸（此时看的是轮廓，不是机瞄）。
+    const adsZoom = p.weapon === 'rifle' ? 1 : THREE.MathUtils.lerp(1, 0.76, a);
+    root.scale.setScalar(sc * adsZoom);
 
     const [rx0, ry0, rz0] = sights.rest;
     const [ax0, ay0, az0] = sights.ads;
@@ -761,15 +767,17 @@ class Game {
 
     let x = rx0 * fit * (1 - 0.3 * portrait) + bobX * (1 - a);
     let y = ry0 * (1 - 0.08 * portrait) + bobY * (1 - a) - reloadDrop - this.switchT * 0.4;
-    let z = rz0 * dolly + this.recoil * 0.05 + this.switchT * 0.12;
+    let z = rz0 * dolly * portRifleNear + this.recoil * 0.05 + this.switchT * 0.12;
 
     x += (ax0 * fit - x) * a;
     y += (ay0 - y) * a;
     z += (az0 * dolly - z) * a;
 
-    // 枪把（枪身支点）在腰射时右移一点：枪口保持不动，枪身向右下展开，
-    // 视觉上枪的轮廓更完整、更有体积感。开镜时归零，保证机瞄居中。
-    x += (p.weapon === 'rifle' ? 0.032 : 0.026) * (1 - a);
+    // 竖屏画幅窄且高：手枪若沿用桌面那套"右下展开"的偏置，会被挤到画面右下角，
+    // 左边留下大片空白。这里把横向偏置按 portrait 收敛，让枪居中偏右下一点点。
+    // 步枪在竖屏下本身已经居中，不能再动，否则会被反解推到奇怪的角度。
+    const xBias = (p.weapon === 'rifle' ? 0.032 : 0.026 * (1 - 0.72 * portrait)) * (1 - a);
+    x += xBias;
 
     // ---- 枪身姿态：让枪口落在准星正下方 ----
     // 目标：把枪口锚点搬到"准星正下方 offsetY"的位置（屏幕正下方一点点），
@@ -780,19 +788,31 @@ class Game {
     // 用一维割线法让枪口的投影 x 落到 0、y 落到 offsetY。
     const axis = root.userData.axis || { x: 0, y: 0.02, z: -0.6, rear: 0 };
     const kick = this.recoil * 0.14;
-    const baseRotZ = (p.weapon === 'rifle' ? 0.02 : 0.015) * (1 - a);
+    // 手枪额外滚转：默认握枪姿态是"套筒朝上"，从第一人称看过去只剩一条方管。
+    // 给一点顺时针滚转（枪口保持不动，机身向右下偏），侧面轮廓——套筒滑槽、护圈、木握片——
+    // 就都露出来了，这是 FPS 里手枪的常规展示角度。
+    const baseRotZ = p.weapon === 'rifle'
+      ? 0.02 * (1 - a)
+      : (0.015 - 0.34) * (1 - a) * (1 - 0.35 * portrait);
+    // 手枪滚转后枪口会跟着偏移，反解会把它拉回准星正下方；
+    // 但轴本身绕原点转，这里把枪身整体再往左送一点做补偿。
+    if (p.weapon !== 'rifle') x += 0.010 * (1 - a * 0.5) - 0.022 * portrait * (1 - a);
     const _p = new THREE.Vector3();
     // 腰射时枪口停在准星下方的屏幕比例（0.16 ≈ 向下 16% 半屏高），开镜归零。
     // 步枪长、可以停得低一些；手枪短，低了就和准星脱节，所以小一点。
-    // 腰射时枪口停在准星下方的屏幕比例（0.16 ≈ 向下 16% 半屏高），开镜归零。
-    // 步枪长、可以停得低一些；手枪短，低了就和准星脱节，所以小一点。
-    const offY = (p.weapon === 'rifle' ? 0.135 : 0.105) * (1 - a);
-    // 把 (pos, rx, ry, rz) 实际写进 root 并返回枪口投影（NDC）
+    const offY = (p.weapon === 'rifle' ? 0.135 : 0.105) * (1 - a) * (p.weapon === 'rifle' && portrait ? 0.55 : 1);
+    // 锚点：腰射时对齐"枪口"（axis.z），开镜时沿枪管轴往机匣后移（axis.rear）。
+    // 为什么开镜要换锚点：开镜必须让"照门—准星"这条视线轴穿过屏幕中心，
+    // 若仍拿枪口当锚点，枪口被迫压在中心，整支枪就只能从中心往右下坠，
+    // 一压 y 就掉出屏幕，只剩一根竖条。改对齐靠后的轴线点后，
+    // 枪管轴线本身穿过中心，枪口自然落在中心下方近处，形成正常机瞄纵深。
+    const anchorZ = axis.z;
+    // 把 (pos, rx, ry, rz) 实际写进 root 并返回锚点投影（NDC）
     const project = (px, py, pz, rx, ry, rz) => {
       root.position.set(px, py, pz);
       root.rotation.set(rx, ry, rz);
       root.updateMatrixWorld(true);
-      _p.set(axis.x || 0, axis.y, axis.z).applyMatrix4(root.matrixWorld).project(this.wCam);
+      _p.set(axis.x || 0, axis.y, anchorZ).applyMatrix4(root.matrixWorld).project(this.wCam);
       return _p;
     };
     // 一维割线法：单调求解 f(t)=0
@@ -812,16 +832,21 @@ class Game {
     // 交叉迭代：横向解 rot.y（让枪口横坐标落到屏幕中心），纵向解 rot.x（落到 offsetY）。
     // 表现层偏移（后坐 / 换弹 / 走动）在反解时就一并计入，解出来即最终呈现。
     const mix = THREE.MathUtils.lerp(0.92, 1, a);
+    // 手枪开镜时给一个轻微俯角：枪管若与视线完全同轴，看到的只是套筒端面（一条竖线）。
+    // 让枪口略低、照门略高，就形成了真正的"照门—准星"机瞄读图。
+    const adsTilt = p.weapon === 'rifle' ? 0 : -0.26 * a;
     let pitchTo = 0.16, yawTo = 0;
     for (let i = 0; i < 8; i++) {
-      yawTo = solve((t) => project(x, y, z, pitchTo * mix + kick + reloadRoll * 0.6, t * mix + reloadRoll * 0.25, baseRotZ).x,
+      yawTo = solve((t) => project(x, y, z, pitchTo * mix + kick + reloadRoll * 0.6 + adsTilt, t * mix + reloadRoll * 0.25, baseRotZ).x,
         yawTo, -1.3, 1.3);
-      pitchTo = solve((t) => project(x, y, z, t * mix + kick + reloadRoll * 0.6, yawTo * mix + reloadRoll * 0.25, baseRotZ).y + offY * mix,
+      pitchTo = solve((t) => project(x, y, z, t * mix + kick + reloadRoll * 0.6 + adsTilt, yawTo * mix + reloadRoll * 0.25, baseRotZ).y + offY * mix,
         pitchTo, -1.0, 1.0);
     }
 
     // 姿态：反解结果直接写入（已含后坐 / 换弹 / 走动的表现层偏移）
-    root.rotation.x = pitchTo * mix + kick + reloadRoll * 0.6;
+    // 注意 adsTilt 必须一并还原，否则反解用的姿态和实际写入的姿态不一致，
+    // 开镜时会解出"准星在画面里、枪口却在别处"的错位。
+    root.rotation.x = pitchTo * mix + kick + reloadRoll * 0.6 + adsTilt;
     root.rotation.y = yawTo * mix + reloadRoll * 0.25;
     root.rotation.z = baseRotZ
       + reloadRoll * 0.5 + bobX * 1.2 * (1 - a) + this.recoil * 0.05;

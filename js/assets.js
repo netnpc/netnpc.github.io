@@ -346,110 +346,189 @@ function addArms(g, opt) {
 }
 
 export function buildPistol() {
-  // ---- Desert Eagle .50AE（重制）：梯形套筒 + 露出多边形枪管 + 胡桃木握把 ----
+  // ---- M1911A1 风格半自动手枪 ----
+  // 上一版的问题：套筒顶面是一条高光白条（顶面材质太亮太窄），
+  // 侧面几乎是纯平的黑板，握把又被手盖住，整体像玩具积木。
+  // 这版按真实 M1911 的比例与断面做：
+  //   套筒 = 上宽下窄的长方体 + 45° 倒角棱（高光落在棱线上，而不是一整条顶面）；
+  //   下机匣在扳机护圈前是"尘土罩"短段，护圈圆润、扳机是弧形片；
+  //   握把 17° 后倾，两片胡桃木握片留出金属边，能看到防滑纹。
   const g = new THREE.Group();
-  const slideTop = mat(0x767d86, 0.42, 0.72);    // 套筒顶面：拉丝钢（低反射，别成白条）
-  const slideSide = mat(0x3d434a, 0.5, 0.78);    // 套筒侧壁：哑光深钢
-  const dark = mat(0x1d2024, 0.6, 0.66);         // 发黑凹槽 / 小件
-  const frame = mat(0x2e3238, 0.55, 0.74);       // 下机匣
-  const gripM = new THREE.MeshStandardMaterial({ color: 0x17181b, roughness: 0.86, metalness: 0.08 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x4a2c17, roughness: 0.68, metalness: 0.03 }); // 胡桃木
-  const steel = mat(0x8d939b, 0.34, 0.86);
-  const grey = mat(0x63686f, 0.4, 0.84);         // 击锤 / 扳机
 
-  // ---- 枪管：粗壮多边形桶，明显露出于套筒之前 ----
-  const barrelCore = cyl(0.0225, 0.0225, 0.135, steel, 8);
-  barrelCore.rotation.x = Math.PI / 2;
-  barrelCore.rotation.z = Math.PI / 8;
-  barrelCore.position.set(0, 0.014, -0.205); g.add(barrelCore);
-  g.add(box(0.026, 0.006, 0.13, slideTop, 0, 0.035, -0.205));                  // 枪管顶部平台
-  for (const sx of [-1, 1]) for (let i = 0; i < 4; i++)                        // 泄气孔
-    g.add(box(0.003, 0.007, 0.007, dark, sx * 0.0215, 0.016, -0.168 - i * 0.024));
+  // ---- 材质：全部走"哑光金属 + 棱线高光"，避免整条白亮带 ----
+  const steel = new THREE.MeshStandardMaterial({ color: 0x8f969f, roughness: 0.34, metalness: 0.9 });
+  const steelDark = new THREE.MeshStandardMaterial({ color: 0x5a616a, roughness: 0.44, metalness: 0.86 });
+  const parkerized = new THREE.MeshStandardMaterial({ color: 0x596069, roughness: 0.6, metalness: 0.68 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.62, metalness: 0.5 });
+  const walnut = new THREE.MeshStandardMaterial({ color: 0x53301a, roughness: 0.58, metalness: 0.04 });
+  const walnutDark = new THREE.MeshStandardMaterial({ color: 0x3c2011, roughness: 0.62, metalness: 0.03 });
+  const bore = new THREE.MeshStandardMaterial({ color: 0x050607, roughness: 0.98, metalness: 0.1 });
 
-  // ---- 枪口冠 + 深膛 ----
-  const crown = cyl(0.0255, 0.0255, 0.016, dark, 16);
-  crown.rotation.x = Math.PI / 2; crown.position.set(0, 0.014, -0.275); g.add(crown);
-  const boreIn = cyl(0.0155, 0.0155, 0.03, mat(0x050607, 0.96, 0.15), 14);
-  boreIn.rotation.x = Math.PI / 2; boreIn.position.set(0, 0.014, -0.272); g.add(boreIn);
+  // 楔形（梯形断面）块：用来做套筒的倒角棱，比纯 Box 有型
+  const wedge = (w0, w1, h, d, m, x, y, z) => {
+    const geo = new THREE.BufferGeometry();
+    const hw0 = w0 / 2, hw1 = w1 / 2, hd = d / 2, hh = h / 2;
+    const v = [
+      // 顶面（窄） 0-3
+      -hw1, hh, -hd, hw1, hh, -hd, hw1, hh, hd, -hw1, hh, hd,
+      // 底面（宽） 4-7
+      -hw0, -hh, -hd, hw0, -hh, -hd, hw0, -hh, hd, -hw0, -hh, hd,
+    ];
+    const idx = [0,1,2, 0,2,3, 4,6,5, 4,7,6, 0,4,5, 0,5,1, 1,5,6, 1,6,2, 2,6,7, 2,7,3, 3,7,4, 3,4,0];
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const m2 = new THREE.Mesh(geo, m);
+    m2.position.set(x, y, z);
+    return m2;
+  };
 
-  // ---- 套筒：梯形断面（顶窄底宽），前段收窄，后段斜防滑纹 ----
-  g.add(box(0.052, 0.016, 0.285, slideTop, 0, 0.034, 0.005));                  // 顶面
-  for (const sx of [-1, 1])                                                    // 顶侧 30° 斜面
-    g.add(box(0.020, 0.026, 0.285, slideTop, sx * 0.030, 0.023, 0.005, 0, 0, sx * 0.52));
-  g.add(box(0.068, 0.030, 0.170, slideSide, 0, 0.004, 0.100));                 // 后段侧壁
-  g.add(box(0.062, 0.026, 0.120, slideSide, 0, 0.001, -0.098));                // 前段侧壁
-  g.add(box(0.062, 0.020, 0.014, dark, 0, 0.000, -0.158, 0.35, 0, 0));         // 前缘斜切
-  for (let i = 0; i < 8; i++)                                                  // 后段斜纹
-    g.add(box(0.070, 0.026, 0.0045, dark, 0, 0.004, 0.128 + i * 0.0115, 0, -0.42, 0));
-  g.add(box(0.004, 0.016, 0.055, dark, 0.0345, 0.010, 0.045));                 // 抛壳口
+  const SLD_Y = 0.030;       // 套筒中心高度
+  const SLD_L = 0.300;       // 套筒长度
+  // ============ 套筒 ============
+  // 主体：上窄下宽的梯形断面（真实 1911 套筒就是这个形状）
+  g.add(wedge(0.050, 0.038, 0.052, SLD_L, steelDark, 0, SLD_Y, 0.010));
+  // 两侧的纵向棱线（一条细窄的抛光面，让高光是"一条线"而不是"一整面"）
+  for (const sx of [-1, 1]) {
+    g.add(box(0.0035, 0.010, SLD_L * 0.92, steel, sx * 0.0245, SLD_Y + 0.006, 0.010));
+  }
+  // 顶面正中的狭窄光条：用略亮的中灰而非高光钢，开镜时不会变成一条白带
+  const topTone = new THREE.MeshStandardMaterial({ color: 0x6e757e, roughness: 0.5, metalness: 0.8 });
+  g.add(box(0.013, 0.0022, SLD_L * 0.9, topTone, 0, SLD_Y + 0.0265, 0.010));
+  // 前后端面（收口）
+  g.add(box(0.050, 0.046, 0.008, black, 0, SLD_Y, -0.142));
+  g.add(box(0.052, 0.050, 0.010, black, 0, SLD_Y, 0.152));
+  // 后段的斜向防滑纹（1911 标志性的竖棱）
+  for (let i = 0; i < 9; i++) {
+    for (const sx of [-1, 1]) {
+      g.add(box(0.004, 0.040, 0.0055, black, sx * 0.0248, SLD_Y + 0.001, 0.098 + i * 0.0085, 0, 0, 0));
+    }
+  }
+  // 抛壳口（右侧）
+  g.add(box(0.004, 0.022, 0.062, bore, 0.0252, SLD_Y + 0.008, 0.045));
+  // 套筒前后各一道细槽（分件感）
+  g.add(box(0.046, 0.004, 0.004, black, 0, SLD_Y + 0.020, -0.055));
+  g.add(box(0.046, 0.004, 0.004, black, 0, SLD_Y + 0.020, 0.115));
 
-  // ---- 瞄具 ----
-  g.add(box(0.009, 0.022, 0.013, dark, 0, 0.052, -0.245));                     // 前准星
-  g.add(box(0.004, 0.004, 0.004, steel, 0, 0.064, -0.245));                    // 白点
-  g.add(box(0.028, 0.009, 0.014, dark, 0, 0.052, 0.160));                      // 照门座
-  for (const sx of [-1, 1]) g.add(box(0.007, 0.016, 0.011, dark, sx * 0.014, 0.062, 0.160));
+  // ============ 枪口 / 枪管 / 膛线 ============
+  // 1911 的 5 英寸枪管略短于套筒，枪口带一圈阳膛
+  const crown = cyl(0.0125, 0.0125, 0.014, steel, 16);
+  crown.rotation.x = Math.PI / 2; crown.position.set(0, SLD_Y + 0.002, -0.148);
+  g.add(crown);
+  const boreIn = cyl(0.0082, 0.0082, 0.05, bore, 14);
+  boreIn.rotation.x = Math.PI / 2; boreIn.position.set(0, SLD_Y + 0.002, -0.140);
+  g.add(boreIn);
+  // 套筒前端的衬套（bushing，1911 的辨识特征）
+  const bush = cyl(0.0165, 0.0165, 0.012, parkerized, 16);
+  bush.rotation.x = Math.PI / 2; bush.position.set(0, SLD_Y + 0.002, -0.134);
+  g.add(bush);
 
-  // ---- 下机匣 + 护圈 + 扳机 ----
-  g.add(box(0.054, 0.036, 0.235, frame, 0, -0.034, 0.008));
-  for (let i = 0; i < 5; i++) g.add(box(0.048, 0.005, 0.007, dark, 0, -0.051, -0.05 + i * 0.015));
-  g.add(box(0.013, 0.010, 0.088, frame, 0, -0.080, -0.020));                   // 护圈下缘
-  g.add(box(0.013, 0.044, 0.011, frame, 0, -0.058, -0.060));                   // 护圈前柱
-  g.add(box(0.013, 0.042, 0.011, frame, 0, -0.056, 0.024));                    // 护圈后柱
-  g.add(box(0.008, 0.032, 0.008, grey, 0, -0.053, -0.016, 0.12));              // 扳机
+  // ============ 下机匣 ============
+  const FRM_Y = -0.008;
+  g.add(box(0.044, 0.030, 0.250, parkerized, 0, FRM_Y, 0.010));       // 机匣本体
+  g.add(box(0.042, 0.012, 0.095, parkerized, 0, FRM_Y - 0.014, -0.098)); // 尘土罩（护圈前段）
+  // 机匣与套筒之间的导轨线
+  for (const sx of [-1, 1])
+    g.add(box(0.0025, 0.005, 0.245, black, sx * 0.0222, FRM_Y + 0.013, 0.010));
 
-  // ---- 握把：18° 握角 + 胡桃木侧板 + 前缘指槽 ----
-  const GA = -0.31;
-  g.add(box(0.046, 0.158, 0.070, gripM, 0, -0.126, 0.104, GA));
-  for (const sx of [-1, 1])                                                    // 木侧板
-    g.add(box(0.006, 0.118, 0.052, wood, sx * 0.025, -0.130, 0.102, GA));
-  for (let i = 0; i < 3; i++)                                                  // 指槽
-    g.add(box(0.048, 0.005, 0.046, dark, 0, -0.074 - i * 0.032, 0.084 + i * 0.010, GA));
-  g.add(box(0.056, 0.044, 0.082, frame, 0, -0.054, 0.140, -0.1));              // 握把过渡
-  g.add(box(0.052, 0.026, 0.048, frame, 0, 0.002, 0.190, -0.12));              // 海狸尾
-  g.add(box(0.050, 0.018, 0.040, dark, 0, -0.202, 0.140, GA));                 // 弹匣底板
+  // ============ 扳机护圈（弧形）============
+  // 用几段小方块拼出圆弧，比单个直方块自然得多
+  const guardSeg = 9;
+  for (let i = 0; i <= guardSeg; i++) {
+    const a = Math.PI * (0.06 + 0.88 * i / guardSeg);      // 前下后扫过
+    const r = 0.036;
+    const cx = 0, cy = FRM_Y - 0.016, cz = -0.030;
+    const px = 0;
+    const py = cy - Math.sin(a) * r;
+    const pz = cz - Math.cos(a) * r;
+    const seg = box(0.011, 0.0075, 0.011, parkerized, px, py, pz, a + Math.PI / 2, 0, 0);
+    g.add(seg);
+  }
+  // 护圈前端与机匣的过渡
+  g.add(box(0.011, 0.020, 0.012, parkerized, 0, FRM_Y - 0.020, -0.066));
+  // 扳机（弧形片）
+  g.add(box(0.010, 0.030, 0.007, steelDark, 0, FRM_Y - 0.018, -0.016, 0.16));
+  g.add(box(0.008, 0.008, 0.006, black, 0, FRM_Y - 0.034, -0.014, 0.16));
 
-  // ---- 控制件 ----
-  g.add(box(0.011, 0.028, 0.010, grey, 0, 0.034, 0.192, -0.42));               // 击锤
-  g.add(box(0.018, 0.009, 0.009, grey, 0, 0.047, 0.181, -0.42));
-  g.add(box(0.007, 0.012, 0.028, steel, 0.036, -0.008, 0.056));                // 滑套卡榫
-  g.add(box(0.007, 0.011, 0.020, dark, -0.036, 0.004, 0.136));                 // 弹匣扣
-  g.add(box(0.046, 0.018, 0.005, steel, 0, 0.024, 0.197));                     // 后盖铭牌
+  // ============ 握把（17° 后倾）============
+  const GA = -0.30;
+  // 握把骨架（金属，比木片略小，木片贴上去后四周露出金属边）
+  g.add(box(0.042, 0.150, 0.078, parkerized, 0, -0.100, 0.112, GA));
+  // 两片胡桃木握片
+  for (const sx of [-1, 1]) {
+    g.add(box(0.0065, 0.126, 0.062, walnut, sx * 0.0245, -0.104, 0.112, GA));
+    // 木片上的菱格防滑纹（三道浅槽，斜向）
+    for (let i = 0; i < 3; i++)
+      g.add(box(0.0012, 0.006, 0.050, walnutDark, sx * 0.0282, -0.062 - i * 0.026, 0.112, GA));
+    // 木片的固定螺丝（横向，贴着木片表面）
+    const screw = cyl(0.0045, 0.0045, 0.0035, steel, 8);
+    screw.rotation.z = Math.PI / 2;
+    screw.position.set(sx * 0.0292, -0.100, 0.112);
+    g.add(screw);
+  }
+  // 握把前缘的指槽
+  for (let i = 0; i < 3; i++)
+    g.add(box(0.044, 0.004, 0.048, black, 0, -0.052 - i * 0.028, 0.088 + i * 0.008, GA));
+  // 主弹簧housing（握把后下方的鼓包）+ 弹匣底板
+  g.add(box(0.048, 0.034, 0.072, parkerized, 0, -0.048, 0.146, -0.12));
+  g.add(box(0.046, 0.016, 0.062, black, 0, -0.176, 0.150, GA));
+  // 海狸尾（击锤下方的护手）
+  g.add(box(0.048, 0.014, 0.052, steelDark, 0, 0.014, 0.158, -0.18));
 
-  // ---- 双手：从后 / 下方包覆，不遮挡枪身与木侧板 ----
-  const glove = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.88, metalness: 0.05 });
-  const gloveL = new THREE.MeshStandardMaterial({ color: 0x32353a, roughness: 0.88, metalness: 0.05 });
-  const sleeve = new THREE.MeshStandardMaterial({ color: 0x556044, roughness: 0.95 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xb98a68, roughness: 0.85 });
-  // 右手背（握把右侧靠后）
-  g.add(box(0.019, 0.096, 0.090, glove, 0.035, -0.128, 0.118, GA));
-  // 右手手指：从右侧绕过握把前缘，四节
+  // ============ 控制件 ============
+  // 击锤（后倾，带击锤簧）
+  g.add(box(0.012, 0.030, 0.012, steelDark, 0, SLD_Y + 0.030, 0.172, -0.55));
+  g.add(box(0.018, 0.008, 0.010, steel, 0, SLD_Y + 0.044, 0.166, -0.55));
+  // 保险（左侧的小拨片）
+  g.add(box(0.006, 0.010, 0.026, steelDark, -0.024, FRM_Y + 0.012, 0.104, 0, 0, 0));
+  // 空仓挂机杆
+  g.add(box(0.005, 0.007, 0.032, steel, -0.0235, FRM_Y + 0.018, 0.020));
+  // 弹匣扣
+  const magBtn = cyl(0.005, 0.005, 0.006, black, 8);
+  magBtn.rotation.z = Math.PI / 2;
+  magBtn.position.set(-0.024, FRM_Y - 0.012, -0.010);
+  g.add(magBtn);
+  // 准星 / 照门
+  g.add(box(0.008, 0.010, 0.008, black, 0, SLD_Y + 0.031, -0.126));
+  g.add(box(0.024, 0.008, 0.010, black, 0, SLD_Y + 0.030, 0.146));
+  g.add(box(0.005, 0.006, 0.004, steel, 0, SLD_Y + 0.033, -0.126));   // 准星白点
+
+  // ============ 双手 ============
+  // 用暖棕皮手套：和深灰的枪身拉开明度差，手才"看得见"，也不会和套筒混成一块。
+  const glove = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.92, metalness: 0.03 });
+  const gloveL = new THREE.MeshStandardMaterial({ color: 0x7a5636, roughness: 0.92, metalness: 0.03 });
+  const sleeve = new THREE.MeshStandardMaterial({ color: 0x3e4633, roughness: 0.97, metalness: 0.0 });
+  const skin = new THREE.MeshStandardMaterial({ color: 0xb98a68, roughness: 0.86 });
+
+  // 右手：手掌紧贴握把右侧（薄薄一层，不鼓成方块），四指绕到前缘
+  g.add(box(0.011, 0.098, 0.074, glove, 0.0300, -0.098, 0.116, GA));      // 掌心
   for (let i = 0; i < 4; i++) {
-    const t = i / 3;                                   // 0=食指 1=小指
-    const yy = -0.086 - i * 0.0235;
-    const zz = 0.072 + i * 0.009;
-    // 指根（较粗）→ 指节（略细，向内弯）
-    g.add(box(0.026, 0.0135, 0.020, glove, 0.020, yy, zz + 0.006, GA));
-    g.add(box(0.022, 0.0115, 0.018, glove, 0.003, yy - 0.002, zz - 0.010, GA, 0, 0.18 * (1 - t)));
-    g.add(box(0.020, 0.0105, 0.016, glove, -0.012, yy - 0.004, zz - 0.024, GA, 0, 0.34 * (1 - t)));
+    const yy = -0.062 - i * 0.0235;
+    const zz = 0.084 + i * 0.009;
+    g.add(box(0.023, 0.0125, 0.020, glove, 0.018, yy, zz + 0.002, GA));                       // 指根
+    g.add(box(0.018, 0.0105, 0.017, glove, 0.002, yy - 0.001, zz - 0.016, GA, 0, 0.2));       // 中节
+    g.add(box(0.016, 0.0095, 0.014, glove, -0.014, yy - 0.003, zz - 0.029, GA, 0, 0.36));     // 指尖
   }
-  // 右手拇指
-  g.add(box(0.019, 0.015, 0.046, glove, -0.029, -0.062, 0.086, -0.36, 0, 0.15));
-  // 左手：左侧抱住，位置更低
-  g.add(box(0.017, 0.084, 0.078, gloveL, -0.037, -0.152, 0.126, GA));
+  // 拇指压在左侧保险上方（从右手过来，横过握把前方）
+  g.add(box(0.016, 0.013, 0.044, glove, -0.024, -0.042, 0.100, -0.3, 0, 0.16));
+  // 左手：托在右手下方，掌根贴着握把底，手指从前面压上右手指背
+  g.add(box(0.048, 0.014, 0.070, gloveL, -0.006, -0.156, 0.126, GA));                        // 左手掌（托）
   for (let i = 0; i < 3; i++) {
-    const yy = -0.118 - i * 0.024;
-    g.add(box(0.022, 0.012, 0.019, gloveL, -0.022, yy, 0.086 + i * 0.008, GA));
-    g.add(box(0.019, 0.010, 0.016, gloveL, -0.006, yy - 0.002, 0.072 + i * 0.008, GA, 0, -0.22));
+    const yy = -0.104 - i * 0.024;
+    g.add(box(0.020, 0.011, 0.018, gloveL, -0.022, yy, 0.086 + i * 0.008, GA));
+    g.add(box(0.017, 0.0095, 0.015, gloveL, -0.007, yy - 0.002, 0.072 + i * 0.008, GA, 0, -0.24));
   }
-  g.add(box(0.017, 0.013, 0.040, gloveL, -0.025, -0.070, 0.100, -0.34, 0, 0.12));
+  g.add(box(0.016, 0.012, 0.040, gloveL, -0.022, -0.052, 0.104, -0.3, 0, 0.14));             // 左拇指
   // 手腕 + 小臂 + 袖口
-  g.add(box(0.068, 0.064, 0.045, skin, 0.004, -0.194, 0.164, -0.44));
-  g.add(box(0.092, 0.098, 0.255, sleeve, -0.004, -0.254, 0.290, 0.44, 0, -0.10));
-  g.add(box(0.098, 0.104, 0.028, sleeve, 0.010, -0.204, 0.194, 0.44, 0, -0.10));
+  g.add(box(0.052, 0.050, 0.034, skin, 0.000, -0.176, 0.170, -0.42));
+  // 小臂比旧版收细一档（0.076→0.064）：竖屏画幅窄，袖子沿 Z 伸向镜头，
+  // 透视放大后很容易糊掉半屏，收细后只在枪身后方露出一段，不抢戏。
+  g.add(box(0.064, 0.068, 0.230, sleeve, -0.004, -0.232, 0.290, 0.42, 0, -0.08));
+  g.add(box(0.072, 0.076, 0.020, sleeve, 0.004, -0.186, 0.198, 0.42, 0, -0.08));
 
   g.traverse((o) => { o.castShadow = true; });
-  // 枪管轴线锚点：准星与枪口对齐用（x=0 为枪管中轴，勿加横向偏移）
-  g.userData.axis = { x: 0, y: 0.014, z: -0.272, rear: 0.172 };
+  // 枪管轴线锚点：准星与枪口对齐用（x=0 为枪管中轴）
+  g.userData.axis = { x: 0, y: SLD_Y + 0.002, z: -0.148, rear: 0.172 };
   return g;
 }
 
@@ -915,67 +994,95 @@ export function buildSoldier(color = 0xb03a3a, skin = 0xd0a07a, opt = {}) {
   body.add(part(rBox(0.055, 0.085, 0.05, 0.5), leather, 0.172, 1.2, 0.05));
   body.add(part(gCyl(0.004, 0.004, 0.12, 6), dark2m, 0.175, 1.28, 0.05, 0.2, 0, 0));
 
-  // ---- 颈 / 头（球体基础 + 鼻梁/下巴/耳廓，做出人脸轮廓）----
-  body.add(part(gCyl(0.046, 0.058, 0.085, 12), maskM, 0, 1.548, 0));
-  // 头骨（略拉长）
-  const head = part(gSph(0.104, 20, 16), maskM, 0, 1.658, 0.004, 0, 0, 0, 0.93, 1.08, 0.99);
-  body.add(head);
-  // 面部裸露区（眼鼻三角）
-  body.add(part(gSph(0.078, 18, 14), skinc, 0, 1.668, -0.052, 0, 0, 0, 1.02, 0.78, 0.62));
-  // 眼部深色带（护目框）
-  body.add(part(gBox(0.128, 0.032, 0.026), maskM, 0, 1.694, -0.082, 0.06));
-  // 眼窝阴影 + 瞳孔反光点
-  body.add(part(gBox(0.028, 0.014, 0.008), eyeM, -0.036, 1.692, -0.1));
-  body.add(part(gBox(0.028, 0.014, 0.008), eyeM, 0.036, 1.692, -0.1));
-  body.add(part(gBox(0.008, 0.005, 0.004), new THREE.MeshStandardMaterial({
-    color: 0xd8d0c4, roughness: 0.4,
-  }), -0.042, 1.697, -0.104));
-  body.add(part(gBox(0.008, 0.005, 0.004), new THREE.MeshStandardMaterial({
-    color: 0xd8d0c4, roughness: 0.4,
-  }), 0.03, 1.697, -0.104));
-  // 鼻梁 + 鼻头
-  body.add(part(rBox(0.022, 0.05, 0.03, 0.6), skinc, 0, 1.664, -0.106));
-  body.add(part(gSph(0.016, 10, 8), skinc, 0, 1.647, -0.112, 0, 0, 0, 1.1, 0.9, 1));
-  // 下颌（面罩收紧）
-  body.add(part(gSph(0.062, 14, 10), maskM, 0, 1.6, -0.038, 0, 0, 0, 1.06, 0.9, 0.96));
-  // 面罩/头巾褶皱（横向细带）
-  body.add(part(gCyl(0.093, 0.089, 0.012, 16), cloth, 0, 1.614, 0.004, 0, 0, 0, 1, 1, 1.02));
-  body.add(part(gCyl(0.098, 0.095, 0.011, 16), cloth, 0, 1.63, 0.004, 0, 0, 0, 1, 1, 1.02));
-  // 耳廓
-  body.add(part(gSph(0.022, 10, 8), skinc, -0.096, 1.664, 0.008, 0, 0, 0, 0.55, 1.15, 0.8));
-  body.add(part(gSph(0.022, 10, 8), skinc, 0.096, 1.664, 0.008, 0, 0, 0, 0.55, 1.15, 0.8));
-  // 后颈遮阳布
-  body.add(part(gBox(0.13, 0.06, 0.012), clothDark, 0, 1.6, 0.098, 0.28));
-  if (opt.cap && !elite) {
-    // 巡逻帽：帽顶 + 帽箍 + 帽檐 + 帽徽
-    body.add(part(gSph(0.107, 16, 10), cloth, 0, 1.726, 0.008, 0, 0, 0, 1, 0.52, 1));
-    body.add(part(gCyl(0.104, 0.106, 0.022, 18), clothDark, 0, 1.716, 0.008, 0, 0, 0, 1, 1, 1));
-    body.add(part(gBox(0.15, 0.012, 0.062), clothDark, 0, 1.712, -0.093, -0.1));
-    body.add(part(gBox(0.016, 0.018, 0.006), accentMat, 0, 1.724, -0.1));
-  }
-  if (elite) {
-    // 钢盔（球壳）+ 盔沿 + 护目镜框 + 红色镜片 + 侧挂战术灯
-    const helmet = new THREE.Mesh(
-      new THREE.SphereGeometry(0.121, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.54), pad
-    );
-    helmet.position.set(0, 1.672, 0.002);
-    helmet.scale.set(1.0, 1.03, 1.04);
-    body.add(helmet);
-    body.add(part(gCyl(0.122, 0.124, 0.014, 20), pad, 0, 1.668, 0.002, 0, 0, 0, 1, 1, 1.03));
-    // 护目镜框
-    body.add(part(rBox(0.2, 0.05, 0.05, 0.4), vestM, 0, 1.69, -0.088));
-    body.add(part(rBox(0.152, 0.03, 0.016, 0.4), glass, 0, 1.69, -0.112));
-    // 镜面高光
-    body.add(part(gBox(0.05, 0.006, 0.004), new THREE.MeshStandardMaterial({
-      color: 0xffd0c0, roughness: 0.1, metalness: 0.2,
-    }), -0.03, 1.702, -0.12, 0, 0, 0.12));
-    // 侧面战术灯
-    body.add(part(gCyl(0.015, 0.015, 0.03, 10), pad, -0.116, 1.706, -0.03, Math.PI / 2, 0, 0));
-    body.add(part(gCyl(0.012, 0.012, 0.006, 10), new THREE.MeshStandardMaterial({
-      color: 0xfff2c0, emissive: 0xffe08a, emissiveIntensity: 0.9, roughness: 0.2,
-    }), -0.116, 1.706, -0.047, Math.PI / 2, 0, 0));
-  }
+  // ---- 头：战术头盔 + 面罩，只露出眼部一条窄缝 ----
+  // 之前的做法是"黑色的头 + 一块肉色球当脸 + 两个白色圆点当瞳孔"，
+  // 近看像贴了张肉色的贴纸、眼珠还是凸出来的白球。
+  // 重做成：头盔壳体包住上半个头，下脸用面罩蒙住，中间一条深色护目镜，
+  // 眼睛放在镜片后面做暗红/冷蓝的微反光，远看是"戴装备的人"而不是"一张脸"。
+  const _h = (y) => 1.646 + y;   // 头部局部高度（头心略降，给头盔留出容纳空间，避免顶穿）
 
+  // 颈（迷彩立领 + 护颈）
+  body.add(part(gCyl(0.049, 0.062, 0.075, 14), cloth, 0, 1.552, 0.004));
+  body.add(part(gCyl(0.056, 0.056, 0.014, 14), webbing, 0, 1.516, 0.004));
+
+  // 颅骨：略收窄的椭球，作为面罩/头盔的"内衬"（深色，只做体积与遮挡）
+  const skullMat = new THREE.MeshStandardMaterial({ color: 0x1a1b1e, roughness: 0.9, metalness: 0.02 });
+  const head = part(gSph(0.101, 20, 16), skullMat, 0, _h(0.004), 0.006, 0, 0, 0, 0.90, 1.06, 0.98);
+  body.add(head);
+
+  // 面罩（下脸）：从鼻梁以下包住，带竖向压褶，材质偏布
+  const maskCloth = new THREE.MeshStandardMaterial({ color: 0x33363b, roughness: 0.94, metalness: 0.02 });
+  body.add(part(gSph(0.088, 18, 14), maskCloth, 0, _h(-0.030), -0.016, 0, 0, 0, 1.0, 0.86, 0.92));
+  // 面罩压褶：三道从鼻翼到下颌的浅槽
+  for (const [dx, rz] of [[-0.042, 0.42], [0, 0], [0.042, -0.42]]) {
+    body.add(part(gBox(0.009, 0.062, 0.008), new THREE.MeshStandardMaterial({ color: 0x191a1d, roughness: 0.96 }),
+      dx, _h(-0.044), -0.086, 0.18, 0, rz));
+  }
+  // 面罩鼻梁处的硬质一片（护鼻）
+  body.add(part(rBox(0.042, 0.05, 0.026, 0.4), pad, 0, _h(-0.004), -0.088, 0.16));
+
+  // 护目镜：一整片外凸的镜片（前移，压在面罩上而不是藏进去），两侧带镜框
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: elite ? 0x93280f : 0x566b7c, roughness: 0.1, metalness: 0.5,
+  });
+  const lensDark = new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.42, metalness: 0.3 });
+  const glint = new THREE.MeshStandardMaterial({ color: 0xe8f4ff, roughness: 0.04, metalness: 0.1 });
+
+  // 镜框（外圈，深色）+ 镜片（内圈，亮）
+  // 高度落在 _h(0.006)：头盔主体在 _h(0.020)、盔沿在 _h(0.022)、面罩在 _h(-0.030)，
+  // 护目镜必须卡在"眉骨—颧骨"之间，太高会被盔沿压掉一半，太低会滑到口罩上。
+  body.add(part(rBox(0.136, 0.042, 0.020, 0.45), lensDark, 0, _h(0.006), -0.084));
+  body.add(part(rBox(0.120, 0.028, 0.014, 0.45), lensMat, 0, _h(0.006), -0.095));
+  // 两侧镜腿
+  for (const sx of [-1, 1])
+    body.add(part(rBox(0.024, 0.023, 0.042, 0.5), lensDark, sx * 0.076, _h(0.006), -0.060, 0, sx * 0.35, 0));
+  // 镜片高光：两条斜条，让"玻璃"有反光
+  for (const sx of [-1, 1])
+    body.add(part(gBox(0.032, 0.004, 0.003), glint, sx * 0.028, _h(0.014), -0.103, 0, 0, -0.26));
+  // 镜片后方的眼部反光点（不做白眼球）
+  const eyeGlow = new THREE.MeshStandardMaterial({
+    color: elite ? 0xff3a20 : 0xa89070, emissive: elite ? 0xa01000 : 0x0e0a06,
+    emissiveIntensity: elite ? 1.2 : 0.5, roughness: 0.5,
+  });
+  for (const sx of [-1, 1])
+    body.add(part(gBox(0.014, 0.007, 0.002), eyeGlow, sx * 0.027, _h(0.005), -0.101));
+
+  // 头盔：球壳（上 60% 覆盖），前沿压在眉挡上
+  const helmetMat = elite
+    ? new THREE.MeshStandardMaterial({ color: 0x2a2d32, roughness: 0.72, metalness: 0.28 })
+    : camoMat(new THREE.Color(color).multiplyScalar(1.05).getHex(), 0.92);
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.108, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.58), helmetMat);
+  shell.position.set(0, _h(0.020), 0.004);
+  shell.scale.set(1.02, 1.06, 1.05);
+  helmetMat.side = THREE.FrontSide;
+  body.add(shell);
+  // 盔沿（一圈加厚的边）
+  body.add(part(gCyl(0.110, 0.113, 0.013, 22), elite ? pad : clothDark, 0, _h(0.022), 0.004, 0, 0, 0, 1.03, 1, 1.06));
+  // 头盔前檐（压低一点，遮住镜片上沿）
+  body.add(part(rBox(0.176, 0.012, 0.046, 0.4), helmetMat, 0, _h(0.056), -0.082, -0.24));
+  // 头盔两侧的导轨 + 侧挂件（不对称，像真装备）
+  for (const sx of [-1, 1]) {
+    body.add(part(gBox(0.008, 0.026, 0.070), pad, sx * 0.106, _h(0.030), -0.012, 0, 0, 0));
+    body.add(part(gCyl(0.007, 0.007, 0.014, 8), metal, sx * 0.112, _h(0.046), 0.010, 0, 0, Math.PI / 2));
+  }
+  // 左耳低轮廓耳机 + 麦克风臂（右侧留空，避免镜像感）
+  body.add(part(gCyl(0.028, 0.028, 0.016, 14), pad, -0.104, _h(-0.006), 0.012, 0, 0, Math.PI / 2));
+  body.add(part(gCyl(0.012, 0.010, 0.010, 10), dark2m, -0.114, _h(-0.006), 0.012, 0, 0, Math.PI / 2));
+  const micArm = part(rBox(0.007, 0.007, 0.062, 0.4), dark2m, -0.092, _h(-0.020), -0.038, 0.30, 0.32, 0);
+  body.add(micArm);
+  body.add(part(gSph(0.011, 8, 6), dark2m, -0.070, _h(-0.030), -0.070));
+  // 后颈护布（从头盔后沿垂下）
+  body.add(part(rBox(0.148, 0.072, 0.016, 0.5), elite ? clothDark : cloth, 0, _h(-0.026), 0.092, 0.30));
+  // 头盔后部的识别带
+  body.add(part(gBox(0.062, 0.010, 0.004), accentMat, 0, _h(0.052), 0.098, 0.42));
+
+  if (opt.cap) {
+    // 巡逻帽（三档通用，精英改戴头盔不叠加帽檐）
+    body.add(part(gCyl(0.108, 0.110, 0.020, 22), clothDark, 0, _h(0.052), 0.004, 0, 0, 0, 1.02, 1, 1.04));
+    body.add(part(rBox(0.150, 0.010, 0.058, 0.4), clothDark, 0, _h(0.044), -0.082, -0.12));
+    body.add(part(gBox(0.020, 0.016, 0.005), accentMat, 0, _h(0.058), -0.098));
+  }
+  void _h; void skullMat;
   // ---- 腿（圆柱 + 球形膝盖，自然收放） ----
   const mkLeg = (sx) => {
     const g = new THREE.Group();
@@ -1039,42 +1146,96 @@ export function buildSoldier(color = 0xb03a3a, skin = 0xd0a07a, opt = {}) {
     return m;
   };
 
-  const mkArm = (sx, targetLocal, gripRot) => {
+  // ---- 手臂：上臂 + 前臂都每帧跟随枪做两骨骼 IK ----
+  // 之前整条手臂是按枪的初始位置一次性解算再合并的静态网格，枪一转动手就留在原地，
+  // 视觉上就是"枪在两只不动的手里翻来翻去"。现在肩点是固定锚点，肘/腕每帧重解。
+  const upArmRoot = (sx) => {
     const g = new THREE.Group();
     const sh = SHOULDER(sx);
-    const tg = toBody(targetLocal[0], targetLocal[1], targetLocal[2]);
-    const el = solveElbow(sh, tg, sx);
-    // 肩/肘/腕
     g.add(part(gSph(0.062, 12, 10), cloth, sh.x, sh.y - 0.004, sh.z));
-    g.add(bone(sh, el, 0.058, 0.049, cloth));
-    g.add(part(gSph(0.05, 12, 10), clothDark, el.x, el.y, el.z));
-    g.add(bone(el, tg, 0.048, 0.042, clothDark));
-    // 袖口
-    const cuff = el.clone().lerp(tg, 0.83);
-    g.add(part(gCyl(0.047, 0.047, 0.03, 10), webbing, cuff.x, cuff.y, cuff.z,
-      0, 0, 0, 1, 1, 1));
-    // 手套（沿枪身方向的圆角块）
-    const glove = part(rBox(0.062, 0.07, 0.082, 0.62), leather, tg.x, tg.y, tg.z);
-    glove.quaternion.setFromEuler(gripRot);
-    g.add(glove);
-    // 露出的指节（4 道横纹）
-    for (let i = 0; i < 3; i++) {
-      const kn = part(gBox(0.056, 0.008, 0.012), leather,
-        tg.x, tg.y - 0.03 + i * 0.017, tg.z - 0.03);
-      kn.quaternion.setFromEuler(gripRot);
-      g.add(kn);
-    }
     bakeStatics(g, []);
     body.add(g);
     return g;
   };
+  // 上臂做成"沿 +Y"的单位长度骨，靠 scale.y 拉伸到 肩→肘 的实际长度
+  const mkUpper = () => {
+    const g = new THREE.Group();
+    g.add(bone(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0), 0.058, 0.049, cloth));
+    g.add(part(gSph(0.05, 12, 10), clothDark, 0, 1, 0));
+    bakeStatics(g, []);
+    body.add(g);
+    return g;
+  };
+  const armL = [upArmRoot(-1), mkUpper()];
+  const armR = [upArmRoot(1), mkUpper()];
+  const upL = armL[1], upR = armR[1];
 
-  // 左手托护木，右手握握把（坐标取自枪的局部系）
-  const armL = mkArm(-1, [-0.004, -0.014, -0.21], new THREE.Euler(0, 0, 0.1));
-  const armR = mkArm(1, [0.004, -0.092, 0.12], new THREE.Euler(-0.5, 0, 0));
+  // 前臂（含手套）做成"沿 +Y 的局部坐标系"：原点在肘，+Y 指向腕。
+  // 每次按枪的实时姿态重新解算并摆放，手就始终跟着枪走。
+  const mkFore = () => {
+    const g = new THREE.Group();
+    g.add(bone(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0.285, 0), 0.048, 0.042, clothDark));
+    g.add(part(gCyl(0.047, 0.047, 0.03, 10), webbing, 0, 0.237, 0));
+    g.add(part(rBox(0.058, 0.070, 0.080, 0.62), leather, 0, 0.298, 0));
+    for (let i = 0; i < 3; i++)
+      g.add(part(gBox(0.052, 0.008, 0.011), leather, 0, 0.272 + i * 0.016, -0.036));
+    bakeStatics(g, []);
+    body.add(g);
+    return g;
+  };
+  const foreL = mkFore();
+  const foreR = mkFore();
 
-  // 静态部分（躯干/背心/头/腰带）按材质合并，腿部与手臂/枪保持独立动画
-  bakeStatics(body, [legL, legR, armL, armR, gun]);
+  const _up = new THREE.Vector3(0, 1, 0);
+  const _q = new THREE.Quaternion(), _tw = new THREE.Quaternion();
+  const _wp = new THREE.Vector3(), _rx = new THREE.Vector3(), _ax = new THREE.Vector3();
+
+  // 每帧调用：按枪当前在 body 局部系里的矩阵，重解两骨骼 IK（肩固定 → 肘 → 腕）。
+  // 这样枪抬、枪转、枪摆，两条手臂都跟着走，手始终"长在"枪上。
+  const updateArms = () => {
+    const gm = gx0.matrix;
+    const spec = [
+      [-1, upL, foreL, -0.004, -0.014, -0.205],   // 左手托护木
+      [1, upR, foreR, 0.004, -0.088, 0.115],      // 右手握握把
+    ];
+    for (const [sx, ub, fb, lx, ly, lz] of spec) {
+      const sh = SHOULDER(sx);
+      _wp.set(lx, ly, lz).applyMatrix4(gm);        // 枪局部 → body 局部
+      const el = solveElbow(sh, _wp, sx);
+
+      // 上臂：肩 → 肘
+      _ax.copy(el).sub(sh);
+      const upLen = _ax.length() || 1e-3;
+      _ax.divideScalar(upLen);
+      ub.position.copy(sh);
+      ub.quaternion.setFromUnitVectors(_up, _ax);
+      ub.scale.set(1, upLen, 1);
+
+      // 前臂：肘 → 腕
+      _ax.copy(_wp).sub(el);
+      const foLen = _ax.length() || 1e-3;
+      _ax.divideScalar(foLen);
+      _q.setFromUnitVectors(_up, _ax);
+      // 滚转：让手套握面贴住枪身横轴（否则手腕会扭着）
+      _rx.set(1, 0, 0).transformDirection(gm);
+      _rx.addScaledVector(_ax, -_rx.dot(_ax));
+      if (_rx.lengthSq() > 1e-6) {
+        _rx.normalize();
+        const x0 = new THREE.Vector3(1, 0, 0).applyQuaternion(_q);
+        const z0 = new THREE.Vector3().crossVectors(x0, _ax).normalize();
+        _tw.setFromAxisAngle(_ax, -Math.atan2(_rx.dot(z0), _rx.dot(x0)));
+        _q.premultiply(_tw);
+      }
+      fb.position.copy(el);
+      fb.quaternion.copy(_q);
+      fb.scale.set(1, foLen / 0.285, 1);
+    }
+  };
+  const gx0 = gun;
+
+
+  // 静态部分（躯干/背心/头/腰带）按材质合并，腿与前臂/枪保持独立
+  bakeStatics(body, [legL, legR, armL[0], upL, armR[0], upR, foreL, foreR, gun]);
 
   // 整体尺寸：略微放大 + 加宽肩背，视觉上更"有分量"
   body.scale.set(1.06, 1.05, 1.06);
@@ -1083,6 +1244,8 @@ export function buildSoldier(color = 0xb03a3a, skin = 0xd0a07a, opt = {}) {
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
   root.userData = {
     head, torso: chest, vest, legL, legR, armL, armR, body, gun,
+    // 每帧按枪的姿态重解算前臂 IK（枪一动，手跟着动）
+    updateArms,
     // 用于受击闪红的材质集合
     flashMats: [cloth, clothDark, vestM],
   };

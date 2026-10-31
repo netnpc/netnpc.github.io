@@ -281,11 +281,14 @@ export class Enemy {
     this.body = ud.body;
     this.legL = ud.legL;
     this.legR = ud.legR;
-    this.armL = ud.armL;
-    this.armR = ud.armR;
+    // armL/armR 是 [肩球根, 上臂骨] 数组（手臂改成了每帧重解的 IK 骨骼），
+    // 肩球根才是可以整体摆动的节点；上臂骨的位置每帧由 IK 重新写，不能直接改它的 rotation。
+    this.armL = Array.isArray(ud.armL) ? ud.armL[0] : ud.armL;
+    this.armR = Array.isArray(ud.armR) ? ud.armR[0] : ud.armR;
     this.vest = ud.vest;
     this.flashMats = ud.flashMats;
     this.gun = ud.gun;
+    this.updateArms = ud.updateArms;
     // 待机姿态与瞄准姿态：rx 是素材原有的抬枪量（握持基准），ry/rz 保证 quaternion.copy 后
     // 每次复用的是同一个"原始的斜持"而不是上一次写进去的瞄准结果
     this.gunBase = { y: this.gun.position.y, rx: this.gun.rotation.x, ry: this.gun.rotation.y, rz: this.gun.rotation.z };
@@ -576,6 +579,9 @@ export class Enemy {
     // 初始直接把高度对齐，之后平滑；否则第一帧从 0 拉到位会有一次垂直弹跳
     if (this._gunPosInit) g.position.y += (yT - g.position.y) * (1 - Math.exp(-dt * 11));
     else { g.position.y = yT; this._gunPosInit = true; }
+    // 枪的姿态变了，手臂必须同步重解算，否则看起来是"枪在两只不动的手里乱转"
+    g.updateMatrix();
+    if (this.updateArms) this.updateArms();
   }
 
   shootAt(player, dist) {
