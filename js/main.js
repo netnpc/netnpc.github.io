@@ -1,11 +1,11 @@
 // 主游戏：渲染、射击、回合管理、UI 绑定
-import * as THREE from '../vendor/three.module.min.js?v=20261031221244';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261031221244';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261031221244';
-import { HUD } from './ui.js?v=20261031221244';
-import { Input } from './input.js?v=20261031221244';
-import { Sfx } from './audio.js?v=20261031221244';
-import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031221244';
+import * as THREE from '../vendor/three.module.min.js?v=20261031225332';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261031225332';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261031225332';
+import { HUD } from './ui.js?v=20261031225332';
+import { Input } from './input.js?v=20261031225332';
+import { Sfx } from './audio.js?v=20261031225332';
+import { buildRifle, buildPistol, flashTexture } from './assets.js?v=20261031225332';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -744,8 +744,8 @@ class Game {
     // rest.y 比旧版抬高 0.05：反解会把枪口压到准星下方，若不抬高，
     // 枪身后半截（枪托/握把）会顶到屏幕底边被裁掉，看起来像断了一截。
     const sights = p.weapon === 'rifle'
-      ? { rest: [0.040, -0.075, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
-      : { rest: [0.048, -0.080, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
+      ? { rest: [0.040, -0.110, -0.82], ads: [0.0, -0.16, -0.62], ry: 0.15 }
+      : { rest: [0.048, -0.115, -0.5], ads: [-0.01, -0.175, -0.42], ry: 0.2 };
     const fit = Math.min(1, Math.max(0.62, this.camera.aspect / 1.65));
     // 竖屏时相机水平视野窄：武器整体缩小 + 后移，避免枪身糊满下半屏
     const portrait = this.camera.aspect < 1 ? 1 : 0;

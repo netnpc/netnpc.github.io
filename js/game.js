@@ -261,6 +261,7 @@ export class Enemy {
     this.speed = 2.6 + Math.random() * 0.5;
     this.aimT = 0;
     this.aiming = false;
+    this.lostT = 0;
     this.muzzleT = 0;
     this._bob = 0;
 
@@ -379,7 +380,16 @@ export class Enemy {
     // 同伴阻挡不算遮挡
     const canSee = !wallHit && !player.dead;
     const fovOk = dist < 26;
-    this.seesPlayer = canSee && fovOk;
+    // 视线迟滞：被掩体挡住后保持 0.5s 的"记忆"再判定丢失。
+    // 否则敌人贴着箱子边缘侧移时 canSee 每帧翻转，状态在 attack/search 之间高速抖动，
+    // 枪就在"戒备"和"瞄准"两个姿态之间来回甩——看起来就是枪在手里乱转。
+    if (canSee && fovOk) {
+      this.lostT = 0;
+      this.seesPlayer = true;
+    } else if (this.seesPlayer) {
+      this.lostT += dt;
+      if (this.lostT > 0.5) this.seesPlayer = false;
+    }
 
     if (this.seesPlayer) {
       this.lastSeen.copy(player.pos);
@@ -505,7 +515,7 @@ export class Enemy {
       this.fireCd -= dt;
       // 抬枪瞄准：枪管真实指向玩家（子弹从枪口射向玩家，视觉一致）
       this.aimT = Math.min(1, this.aimT + dt * 5);
-      this.aimGun(player, this.aimT);
+      this.aimGun(player, this.aimT, dt);
       // 只在枪管基本转正后才扣扳机：弹道直接取枪管方向，
       // 若在 aimT 过渡途中开火，屏幕上的枪还没指过来、子弹却已经飞出去，就会"看起来不在一条线"。
       if (this.fireCd <= 0 && !player.dead && this.aimT > 0.88) {
@@ -516,8 +526,12 @@ export class Enemy {
         this.gun.position.y += 0.012;
       }
     } else {
-      this.aimT = Math.max(0, this.aimT - dt * 4);
-      this.aimGun(player, this.aimT);
+      // 收枪要慢、且瞄准点用"最后目击位置"而不是直接垂下枪口：
+      // 即使状态短暂抖动，枪管指的目标也几乎不变，视觉上枪是稳的。
+      const decay = this.state === 'search' ? 1.5 : 3.5;
+      this.aimT = Math.max(0, this.aimT - dt * decay);
+      const tgt = (this.hasLastSeen && this.aimT > 0.05) ? this.lastSeen : player.pos;
+      this.aimGun({ pos: tgt }, this.aimT, dt);
       this.fireCd = Math.max(this.fireCd - dt, 0.25 + Math.random() * 0.4);
     }
   }
@@ -526,7 +540,8 @@ export class Enemy {
   // 直接把枪管 -Z 轴用四元数对到"枪口→玩家"方向，指哪打哪。
   // 注意：调用前 group 的位置与朝向必须已经写入并 updateMatrixWorld，
   // 否则取到的是上一帧的世界矩阵，枪会在手里来回抽搐。
-  aimGun(player, k) {
+  // dt 用于末端的四元数低通：无论上层给 k 怎么跳，枪的角速度都被限住，不会甩。
+  aimGun(player, k, dt = 0.016) {
     const g = this.gun;
     if (!g) return;
     k = Math.max(0, Math.min(1, k));
@@ -538,11 +553,16 @@ export class Enemy {
     const pq = new THREE.Quaternion();
     g.parent.getWorldQuaternion(pq);
     const qLocal = pq.invert().multiply(qAim);
-    // 待机姿态：抬起量抬满（rx + lift），但保留素材原有的偏转，
-    // 这样从"斜持戒备"到"平举瞄准"是绕肩部同一支点的一条弧线，不会先横甩再翻上来。
+    // 待机姿态：抬起量抬满（rx + lift），保留素材偏转，从"斜持戒备"到"平举瞄准"
+    // 是绕肩部同一支点的一条弧线
     const qRest = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.gunBase.rx + 0.45, this.gunBase.ry, this.gunBase.rz));
-    g.quaternion.copy(qRest).slerp(qLocal, k);
-    g.position.y = this.gunBase.y + 0.06 * k;
+    const qT = qRest.slerp(qLocal, k);
+    // 四元数低通（指数平滑）：目标姿态再稳，枪也只以有限角速度追过去
+    if (!this._gunQ) this._gunQ = qT.clone();
+    else this._gunQ.slerp(qT, 1 - Math.exp(-dt * 11));
+    g.quaternion.copy(this._gunQ);
+    const yT = this.gunBase.y + 0.06 * k;
+    g.position.y += (yT - g.position.y) * (1 - Math.exp(-dt * 11));
   }
 
   shootAt(player, dist) {
