@@ -266,7 +266,7 @@ export class Enemy {
     // 分层外观：0 普通（红棕）/ 1 老兵（深蓝）/ 2 精英（黑+红外骨骼镜）
     const looks = [
       { color: 0x7a5c34, skin: 0xd0a07a, opt: { cap: true } },                       // 沙棕迷彩 + 巡逻帽
-      { color: 0x2e3a4a, skin: 0xc99a70, opt: {} },                                  // 深蓝灰迷彩（Urban）
+      { color: 0x2e3a4a, skin: 0xc99a70, opt: { vet: true } },                          // 深蓝灰迷彩（Urban）
       { color: 0x26282c, skin: 0xb98a66, opt: { elite: true, visorColor: 0xff2a10 } }, // 黑装 + 红镜（GSG9）
     ];
     const lk = looks[Math.min(tier, looks.length - 1)];
@@ -285,11 +285,15 @@ export class Enemy {
     this.flashMats = ud.flashMats;
     this.gun = ud.gun;
     this.gunBase = { y: this.gun.position.y, rx: this.gun.rotation.x };
-    // 精英体型略大
-    if (tier === 2) this.group.scale.setScalar(1.06);
+    // 整体放大（原来偏小，远看像小人）；精英再大一圈
+    const scl = tier === 2 ? 1.2 : tier === 1 ? 1.13 : 1.16;
+    this.group.scale.setScalar(scl);
+    // 碰撞体同步放大
+    this.radius = 0.36 * scl;
+    this.height = 1.78 * scl;
   }
 
-  get eyePos() { return new THREE.Vector3(this.pos.x, this.pos.y + 1.62, this.pos.z); }
+  get eyePos() { const k = this.group ? this.group.scale.x : 1; return new THREE.Vector3(this.pos.x, this.pos.y + 1.62 * k, this.pos.z); }
 
   dispose() {
     this.game.scene.remove(this.group);
@@ -299,11 +303,12 @@ export class Enemy {
   // 射线命中（从上到下优先头部）
   rayHit(origin, dir, maxDist) {
     if (this.dead) return null;
-    // 头部球
-    const headC = new THREE.Vector3(this.pos.x, this.pos.y + 1.62, this.pos.z);
-    const ht = raySphere(origin, dir, headC, 0.2);
+    // 头部球（按实际缩放同步，放大后仍要"打得中")
+    const k = this.group.scale.x;
+    const headC = new THREE.Vector3(this.pos.x, this.pos.y + 1.66 * k, this.pos.z);
+    const ht = raySphere(origin, dir, headC, 0.16 * k);
     // 身体胶囊
-    const bt = rayCapsule(origin, dir, this.pos, this.radius + 0.05, 1.55);
+    const bt = rayCapsule(origin, dir, this.pos, this.radius + 0.05, 1.5 * k);
     let best = null;
     if (ht !== null && ht <= maxDist) best = { dist: ht, head: true };
     if (bt !== null && bt <= maxDist && (!best || bt < best.dist)) best = { dist: bt, head: false };
@@ -517,7 +522,16 @@ export class Enemy {
     const accuracy = this.tier === 2 ? 0.86 : this.tier === 1 ? 0.72 : 0.58;
     const distFactor = Math.max(0.35, 1 - dist / 42);
     const hitChance = accuracy * distFactor;
-    const muzzle = this.eyePos.clone().add(new THREE.Vector3(-Math.sin(this.yaw) * 0.55, -0.3, -Math.cos(this.yaw) * 0.55));
+    // 枪口位置跟随实际模型（枪长/持握角度变了也不会错位）
+    const muzzle = new THREE.Vector3();
+    if (this.gun) {
+      this.group.updateMatrixWorld(true);
+      const ml = this.gun.userData.muzzle;
+      muzzle.copy(ml ? ml : new THREE.Vector3(0, 0.012, -0.62));
+      this.gun.localToWorld(muzzle);
+    } else {
+      muzzle.copy(this.eyePos).add(new THREE.Vector3(-Math.sin(this.yaw) * 0.55, -0.3, -Math.cos(this.yaw) * 0.55));
+    }
     const targetHead = new THREE.Vector3(player.pos.x, player.pos.y + (Math.random() < 0.22 ? player.eyeH : 1.05), player.pos.z);
     const dir = targetHead.clone().sub(muzzle).normalize();
     const hit = Math.random() < hitChance;
