@@ -5,6 +5,9 @@ export class Input {
     this.keys = new Set();
     this.lookDX = 0;
     this.lookDY = 0;
+    // Look motion is queued and released at the finger's own rate (see consumeLook)
+    this._lookSpan = 0;        // seconds of finger motion waiting in the queue
+    this._lookTPrev = 0;       // timestamp of the previous sample
     this.firing = false;
     this.moveX = 0;      // -1..1, stick axis
     this.moveY = 0;
@@ -211,10 +214,21 @@ export class Input {
 
     document.addEventListener('pointermove', (e) => {
       if (!this.enabled || e.pointerId !== this.lookPtr) return;
-      const dx = e.clientX - this.lookPX;
-      const dy = e.clientY - this.lookPY;
-      this.lookPX = e.clientX; this.lookPY = e.clientY;
-      this._accumLook(dx, dy);
+
+      // The browser may pack several physical samples into one pointermove. Reading only
+      // e.clientX keeps the last one and discards the motion in between, so a steady finger
+      // arrives as an uneven stitch of jumps and the view stutters. Sum every sample instead.
+      // Fall back to the event itself when coalescing is unavailable (older Safari).
+      const list = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : null;
+      if (list && list.length) {
+        for (const c of list) {
+          this._accumLook(c.clientX - this.lookPX, c.clientY - this.lookPY);
+          this.lookPX = c.clientX; this.lookPY = c.clientY;
+        }
+      } else {
+        this._accumLook(e.clientX - this.lookPX, e.clientY - this.lookPY);
+        this.lookPX = e.clientX; this.lookPY = e.clientY;
+      }
     }, { passive: true });
 
     const up = (e) => { if (e.pointerId === this.lookPtr) this._flushLook(); };
@@ -264,20 +278,36 @@ export class Input {
    * Single entry point for look delta: clamp plus sensitivity.
    * The per-frame clamp is relaxed to 240px: it only catches bad events (finger teleport, coordinate jump),
    * so a normal fast swipe (especially during frame drops) is no longer truncated and the view does not stall mid-drag.
+   *
+   * Motion is queued rather than applied at once. Touch samples arrive on their own clock
+   * (120-240Hz) while frames run at 60Hz, so a frame can receive 3, 4 or 5 samples at random
+   * and the view advances by a lumpy 3.8 / 5.0 / 6.3 degrees instead of a steady 5.0. That
+   * fluctuation is visible as stutter, even though the finger never changed speed.
+   * Queueing lets consumeLook() hand the motion out at the rate the finger is actually moving.
    */
   _accumLook(dx, dy) {
     const cap = 240;
     const cd = Math.max(-cap, Math.min(cap, dx));
     const cdy = Math.max(-cap, Math.min(cap, dy));
     const s = this._touchBase * this.sens;
+    const now = performance.now();
+    // How much time this batch of motion represents: the gap since the previous sample.
+    // Clamped so a stalled tab or a resumed finger cannot inject a huge backlog.
+    const gap = this._lookTPrev ? Math.min(0.05, Math.max(0.001, (now - this._lookTPrev) / 1000)) : 0.008;
+    this._lookTPrev = now;
     this.lookDX += cd * s;
     this.lookDY += cdy * s;
+    this._lookSpan += gap;          // seconds of finger motion currently queued
   }
 
   /** When touchmove is lost (finger flung off screen), a synthetic event fills in the last stretch of movement */
   _flushLook() {
     this.lookPtr = null;
     this._touchLookId = null;
+    this._lookTPrev = 0;
+    // Any motion still queued at this point is at most a frame's worth and is released on the
+    // next frame: dropping it here would clip the end of every drag. The queue is capped by
+    // the per-sample gap clamp, so it cannot grow into a jump even if this never runs.
   }
 
   // Whether a screen point hits an interactive button (touches there do not turn the view)
@@ -312,10 +342,33 @@ export class Input {
     if (this.stickKnob) this.stickKnob.style.transform = `translate(${nx * 0.75}px,${ny * 0.75}px)`;
   }
 
-  // Consume and clear the delta each frame
-  consumeLook() {
-    const dx = this.lookDX, dy = this.lookDY;
-    this.lookDX = 0; this.lookDY = 0;
+  /**
+   * Hand out this frame's share of the queued motion.
+   *
+   * The queue holds motion the finger has already produced, tagged with how long the finger
+   * spent producing it (`_lookSpan`). Each frame releases a slice proportional to the frame
+   * time, so the view turns at the finger's true speed instead of in event-sized lumps.
+   * A small amount is deliberately left in the queue: if the frame time and the sample clock
+   * drift apart, an empty queue would drop the last sample and cause a visible catch-up.
+   */
+  consumeLook(dt) {
+    const frame = dt || 1 / 60;
+    let f = 1;
+    if (this._lookSpan > 1e-6) {
+      // Release one frame's worth, but never more than what is queued
+      f = Math.min(1, frame / this._lookSpan);
+    }
+    const dx = this.lookDX * f;
+    const dy = this.lookDY * f;
+    this.lookDX -= dx;
+    this.lookDY -= dy;
+    this._lookSpan = Math.max(0, this._lookSpan - frame);
+
+    // Below a pixel the leftover is not worth keeping; flush it so the view cannot creep
+    if (Math.abs(this.lookDX) < 1e-5 && Math.abs(this.lookDY) < 1e-5) {
+      this.lookDX = 0; this.lookDY = 0; this._lookSpan = 0;
+    }
+
     // Lets aim assist tell whether the player is actively turning right now:
     // The harder the turn, the weaker the pull, so assist never fights the player.
     this.lastLookDX = dx;

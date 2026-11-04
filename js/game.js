@@ -1,7 +1,7 @@
 // Player / enemy / weapon / round logic
-import * as THREE from '../vendor/three.module.min.js?v=20261104090920';
-import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261104090920';
-import { rayCapsule, ARENA } from './world.js?v=20261104090920';
+import * as THREE from '../vendor/three.module.min.js?v=20261104125927';
+import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261104125927';
+import { rayCapsule, ARENA } from './world.js?v=20261104125927';
 
 export const WEAPONS = {
   rifle: {
@@ -79,7 +79,7 @@ export class Player {
     if (this.dead) return;
 
     // View
-    const lk = input.consumeLook();
+    const lk = input.consumeLook(dt);
     this.look(lk.dx, lk.dy);
 
     // Recoil recovery
