@@ -10,6 +10,7 @@ export class Input {
     this._lookTPrev = 0;       // timestamp of the previous sample
     // Noise gate state (see _accumLook): offset from the rest point the gate is armed around
     this._restX = 0; this._restY = 0;
+    this._quiet = 1;           // seconds since the last released sample (starts at rest)
     this.firing = false;
     this.moveX = 0;      // -1..1, stick axis
     this.moveY = 0;
@@ -319,7 +320,18 @@ export class Input {
     // The rest point follows the finger (by the amount released) while a drag is in progress,
     // so the gate does not keep re-arming and stalling partway through a turn. It only holds
     // still once the finger has stopped leaving it, which is precisely the "resting" case.
-    const RAD = 2.5;                 // px: how far panel jitter wanders from its rest point
+    //
+    // The radius shrinks while the finger is moving and grows back only once it has been quiet
+    // for a moment. A fixed radius means every reversal has to cover it again before anything
+    // happens: the thumb visibly has to travel a couple of pixels back before the view starts
+    // to turn, which is what makes a correction feel heavy. Once a drag is under way there is
+    // nothing left to filter -- the player has already proven the finger is moving -- so the
+    // radius drops to a fraction of a pixel and a reversal is followed on the very next sample.
+    // When the finger stops, the remnant is inside the noise band anyway and the full radius
+    // comes back to keep a resting thumb still.
+    this._quiet = (this._quiet || 0) + gap;
+    const moving = this._quiet < 0.04;   // released something within the last few samples
+    const RAD = moving ? 0.6 : 2.5;      // px: how far panel jitter wanders from its rest point
     this._restX += cd;
     this._restY += cdy;
     const off = Math.hypot(this._restX, this._restY);
@@ -332,6 +344,7 @@ export class Input {
     this._restX -= outX;
     this._restY -= outY;
     this._lookSpan += gap;           // seconds of finger motion currently queued
+    this._quiet = 0;                 // the finger is moving, so the small radius stays
 
     this.lookDX += outX * s;
     this.lookDY += outY * s;
@@ -344,6 +357,7 @@ export class Input {
     this._lookTPrev = 0;
     // A fresh press starts with no history, so a leftover accumulation cannot leak into it
     this._restX = 0; this._restY = 0;
+    this._quiet = 1;                 // a fresh press starts at rest, with the full noise radius
     // Any motion still queued at this point is at most a frame's worth and is released on the
     // next frame: dropping it here would clip the end of every drag. The queue is capped by
     // the per-sample gap clamp, so it cannot grow into a jump even if this never runs.
@@ -401,9 +415,8 @@ export class Input {
       this._lookSpan = MAX_SPAN;
     }
     // Release everything queued once the queue is no longer than a frame, otherwise the view
-    // runs permanently one frame behind the finger. Earlier this always held back a frame's
-    // worth to absorb clock drift, which is exactly the latency that reads as "does not keep
-    // up". Anything older than a frame is still released proportionally.
+    // runs permanently one frame behind the finger. Anything older than a frame is released
+    // proportionally.
     let f = 1;
     if (this._lookSpan > frame + 1e-6) {
       f = Math.min(1, frame / this._lookSpan);
