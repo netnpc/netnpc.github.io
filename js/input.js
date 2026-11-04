@@ -311,29 +311,33 @@ export class Input {
     // Applied directly, that noise turns the view by about a third of a degree and reads as a
     // slow drift while the thumb is merely resting on the glass.
     //
-    // Speed cannot be measured reliably here: sample timestamps are irregular and a busy frame
-    // can deliver a burst in one millisecond. The ratio of net travel to total travel is the
-    // reliable signal. Noise reverses constantly, so its net stays near zero while the total
-    // keeps climbing; a deliberate drag keeps adding one way, so the net tracks the total.
-    // Both accumulators decay, so the gate always recovers: a long idle period cannot leave
-    // enough back-and-forth behind to block the next real drag.
-    const DECAY = 0.985;
+    // Direction is the reliable signal: noise reverses almost every sample, so its net travel
+    // cancels out, while a deliberate drag keeps adding the same way. Net travel is compared
+    // against total travel, both decaying slowly so a long idle period cannot leave enough
+    // back-and-forth behind to block the next drag.
+    //
+    // Crucially the gate must never *withhold* motion and dump it later: that is what makes a
+    // drag feel like it is catching up in lumps. Every sample is passed through, scaled by how
+    // trustworthy the last few samples were. Pure noise is scaled nearly to zero (invisible),
+    // and a drag is scaled by 1 the moment its direction holds, so the view tracks the thumb
+    // with no accumulated debt to pay off.
+    const DECAY = 0.9;
     this._accX = this._accX * DECAY + cd;
     this._accY = this._accY * DECAY + cdy;
     this._churn = this._churn * DECAY + Math.abs(cd) + Math.abs(cdy);
 
     const net = Math.hypot(this._accX, this._accY);
-    if (net < this._gatePx || net < this._churn * this._gateRatio) {
-      // Too little net travel, or too much back-and-forth for the net to mean anything.
-      // Nothing is released and no time is claimed, so the queue cannot grow while idle.
-      return;
-    }
+    // 0 when the movement is pure noise, 1 when it is entirely one direction.
+    const consistency = net / Math.max(1e-6, this._churn);
+    // Suppress below the noise floor, pass everything once the direction is clearly held.
+    // Smoothstep in between, so the transition itself cannot introduce a step.
+    const k = Math.min(1, Math.max(0, (consistency - 0.55) / 0.35));
+    const gain = k * k * (3 - 2 * k);
 
-    const mx = this._accX, my = this._accY;
-    this._accX = 0; this._accY = 0; this._churn = 0;
+    if (gain <= 0.002) return;      // pure noise: nothing at all reaches the view
 
-    this.lookDX += mx * s;
-    this.lookDY += my * s;
+    this.lookDX += cd * s * gain;
+    this.lookDY += cdy * s * gain;
     this._lookSpan += gap;          // seconds of finger motion currently queued
   }
 

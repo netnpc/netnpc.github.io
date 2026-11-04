@@ -1,6 +1,6 @@
 // Level maps: battlefield layout plus collision boxes (multiple maps supported)
-import * as THREE from '../vendor/three.module.min.js?v=20261104135007';
-import { concreteTexture, containerTexture, woodTexture, crateTexture, targetTexture, skyTexture } from './assets.js?v=20261104135007';
+import * as THREE from '../vendor/three.module.min.js?v=20261104140525';
+import { concreteTexture, containerTexture, woodTexture, crateTexture, targetTexture, skyTexture } from './assets.js?v=20261104140525';
 
 export const ARENA = { minX: -25, maxX: 25, minZ: -25, maxZ: 25, wallH: 7 };
 
