@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261104165027';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261104165027';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261104165027';
-import { HUD } from './ui.js?v=20261104165027';
-import { Input } from './input.js?v=20261104165027';
-import { Sfx } from './audio.js?v=20261104165027';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104165027';
+import * as THREE from '../vendor/three.module.min.js?v=20261104165408';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261104165408';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261104165408';
+import { HUD } from './ui.js?v=20261104165408';
+import { Input } from './input.js?v=20261104165408';
+import { Sfx } from './audio.js?v=20261104165408';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104165408';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -32,7 +32,7 @@ class Game {
         // 1.0 left over from that search is reset; a deliberate choice made under the new
         // baseline can simply be set again on the slider.
         const v = parseFloat(localStorage.getItem('zs_sens') || '1');
-        if (v < 1) { localStorage.removeItem('zs_sens'); return 1; }
+        if (v < 1) { localStorage.setItem('zs_sens', '1'); return 1; }
         return v;
       })(),
       fov: parseInt(localStorage.getItem('zs_fov') || '85'),

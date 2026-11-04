@@ -1,7 +1,7 @@
 // Player / enemy / weapon / round logic
-import * as THREE from '../vendor/three.module.min.js?v=20261104165027';
-import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261104165027';
-import { rayCapsule, ARENA } from './world.js?v=20261104165027';
+import * as THREE from '../vendor/three.module.min.js?v=20261104165408';
+import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261104165408';
+import { rayCapsule, ARENA } from './world.js?v=20261104165408';
 
 export const WEAPONS = {
   rifle: {
