@@ -334,6 +334,12 @@ export class Input {
     const RAD = moving ? 0.6 : 2.5;      // px: how far panel jitter wanders from its rest point
     this._restX += cd;
     this._restY += cdy;
+    // Any movement at all means the finger is not at rest, even when it has not yet travelled
+    // far enough to be released. Resetting this only on release made a reversal fall back to
+    // the large radius the moment it started -- the thumb was moving, but nothing had been
+    // handed over yet -- so the first few pixels of the turn back were swallowed and the view
+    // only began to follow after about 4px. Resetting on movement keeps the small radius.
+    if (Math.abs(cd) + Math.abs(cdy) > 0.5) this._quiet = 0;
     const off = Math.hypot(this._restX, this._restY);
     // Release everything that lies beyond the radius: the output is the finger's motion with
     // the noise ball taken out, so a drag keeps its full travel instead of being scaled.
@@ -398,11 +404,20 @@ export class Input {
   /**
    * Hand out this frame's share of the queued motion.
    *
-   * The queue holds motion the finger has already produced, tagged with how long the finger
-   * spent producing it (`_lookSpan`). Each frame releases a slice proportional to the frame
-   * time, so the view turns at the finger's true speed instead of in event-sized lumps.
-   * A small amount is deliberately left in the queue: if the frame time and the sample clock
-   * drift apart, an empty queue would drop the last sample and cause a visible catch-up.
+   * The queue exists to even out the sample clock: samples arrive at 120-240Hz while frames
+   * run at 60Hz, so without it a frame receives 1, 2 or 3 samples at random and the view
+   * advances in lumps. The queue lets each frame hand out motion at the rate the finger is
+   * actually moving.
+   *
+   * The queue must never hold a *permanent* backlog, though. It used to be drained by
+   * subtracting the frame length from the queued span, while the span was filled from real
+   * sample timestamps. Those two clocks do not agree exactly, so one frame with three samples
+   * instead of two left 8ms in the queue that never drained: the drain rate stayed at
+   * frame/span < 1 forever, and the view ran permanently part of a frame behind the finger.
+   *
+   * So the queue is kept at most one frame long: anything within a frame is handed over whole,
+   * anything beyond it is what the frame cannot show yet and is released proportionally.
+   * Holding a frame back permanently is the lag; letting the queue grow is the lump.
    */
   consumeLook(dt) {
     const frame = dt || 1 / 60;
@@ -414,9 +429,7 @@ export class Input {
       this.lookDX *= keep; this.lookDY *= keep;
       this._lookSpan = MAX_SPAN;
     }
-    // Release everything queued once the queue is no longer than a frame, otherwise the view
-    // runs permanently one frame behind the finger. Anything older than a frame is released
-    // proportionally.
+    // Release everything queued unless it is longer than a frame's worth of motion
     let f = 1;
     if (this._lookSpan > frame + 1e-6) {
       f = Math.min(1, frame / this._lookSpan);
@@ -425,7 +438,10 @@ export class Input {
     const dy = this.lookDY * f;
     this.lookDX -= dx;
     this.lookDY -= dy;
-    this._lookSpan = Math.max(0, this._lookSpan - frame);
+    // Drain by what was actually released, then clamp back to one frame: the remainder inside
+    // one frame is handed out next frame in full, so no backlog can survive a frame boundary.
+    this._lookSpan = Math.max(0, this._lookSpan * (1 - f));
+    if (this._lookSpan > frame) this._lookSpan = frame;
 
     // Below a pixel the leftover is not worth keeping; flush it so the view cannot creep
     if (Math.abs(this.lookDX) < 1e-5 && Math.abs(this.lookDY) < 1e-5) {
@@ -443,18 +459,19 @@ export class Input {
    * Touch look sensitivity, calibrated to screen width.
    * Turning is a horizontal gesture, so the narrower the screen the more a given finger travel must turn,
    * otherwise in portrait the view never comes round.
-   * Target: about 0.34 screen widths of drag is a 180 degree turn, so one thumb swipe turns the player around.
    */
   syncTouchSens() {
     const w = window.innerWidth || 400;
-    // 0.30 screen widths maps to pi radians, so base = pi / (0.30 * w).
-    // Measured against how far a thumb actually travels: a comfortable single swipe is about
-    // 200-250px, but 0.42 screen widths demanded 355px on an 844px landscape phone, so turning
-    // to face an enemy behind you needed the finger dragged to the very edge of the glass.
-    // That is what read as "does not keep up with my finger". 0.30 brings it to about 253px,
-    // one comfortable swipe for half a turn, while still far from twitchy.
-    const base = Math.PI / (0.30 * w);
-    this._touchBase = Math.max(0.0060, Math.min(0.030, base));
+    // 0.24 screen widths maps to pi radians, so base = pi / (0.24 * w).
+    //
+    // Tuned against how far a thumb actually travels. A comfortable single swipe is about
+    // 200-250px; the original 0.42 screen widths demanded 355px on an 844px landscape phone,
+    // and 0.30 still needed 307px. Both felt heavy -- a correction that should be a short flick
+    // turned into a full sweep of the glass. 0.24 brings a half turn to about 203px, one easy
+    // swipe, which is the range a thumb naturally covers without repositioning.
+    // The floor and ceiling keep this sane on very narrow and very wide screens.
+    const base = Math.PI / (0.24 * w);
+    this._touchBase = Math.max(0.0075, Math.min(0.034, base));
   }
   consumeFlag(name) {
     if (this[name]) { this[name] = false; return true; }
