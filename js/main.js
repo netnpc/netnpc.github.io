@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261104140525';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261104140525';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261104140525';
-import { HUD } from './ui.js?v=20261104140525';
-import { Input } from './input.js?v=20261104140525';
-import { Sfx } from './audio.js?v=20261104140525';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104140525';
+import * as THREE from '../vendor/three.module.min.js?v=20261104143150';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261104143150';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261104143150';
+import { HUD } from './ui.js?v=20261104143150';
+import { Input } from './input.js?v=20261104143150';
+import { Sfx } from './audio.js?v=20261104143150';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104143150';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -555,8 +555,9 @@ class Game {
     this.tracer(muzzleWorld, endPoint, 0xffe9a0);
     if (p.weapon === 'rifle') this.sfx.rifle(); else this.sfx.pistol();
 
-    // Recoil
-    p.recoilPitch += def.recoil * (0.75 + Math.random() * 0.5);
+    // Recoil: booked as a debt against the pitch the burst started from, so the view kicks up
+    // and then comes back down on its own instead of climbing a little with every shot.
+    p.climbRecoil(def.recoil * (0.75 + Math.random() * 0.5));
     p.recoilYaw += (Math.random() - 0.5) * def.recoil * 0.9;
     this.recoil = Math.min(1, this.recoil + def.kick * 4);
     this.flashT = 0.13;
@@ -1576,7 +1577,13 @@ class Game {
     // Smooth approach (exponential convergence); larger rate pulls faster
     const s = 1 - Math.exp(-cfg.rate * strength * dt);
     p.yaw += dyaw * s;
-    p.pitch += dpitch * s;
+    const dp = dpitch * s;
+    p.pitch += dp;
+    // The assist's own downward correction counts as paying the recoil back, and its upward
+    // correction as adding to it. Otherwise the pull moves the view off the burst anchor while
+    // the recoil model still believes the anchor holds, and releasing the trigger would drag
+    // the view back to a stale angle.
+    if (p._recoilDebt > 0 && dp < 0) p._recoilDebt = Math.max(0, p._recoilDebt + dp);
     // Clamp back to the pitch limit
     const limP = Math.PI / 2 - 0.05;
     p.pitch = Math.max(-limP, Math.min(limP, p.pitch));
@@ -1751,6 +1758,10 @@ class Game {
     if (this.state === 'playing') {
       const p = this.player;
       p.fireCd = Math.max(0, p.fireCd - dt);
+
+      // Tell the recoil model whether the trigger is still down before it runs: while it is,
+      // the climb holds; once released, the view settles back to where the burst began.
+      p.recoilHold = this.input.firing;
 
       p.update(dt, this.input, this.world);
 

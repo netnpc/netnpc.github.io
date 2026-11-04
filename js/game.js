@@ -1,17 +1,17 @@
 // Player / enemy / weapon / round logic
-import * as THREE from '../vendor/three.module.min.js?v=20261104140525';
-import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261104140525';
-import { rayCapsule, ARENA } from './world.js?v=20261104140525';
+import * as THREE from '../vendor/three.module.min.js?v=20261104143150';
+import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261104143150';
+import { rayCapsule, ARENA } from './world.js?v=20261104143150';
 
 export const WEAPONS = {
   rifle: {
     id: 'rifle', name: 'AK-47', magSize: 30, reserveMax: 240, rpm: 600, dmg: 33, headMul: 3.2,
-    spread: 0.010, spreadMoving: 0.035, recoil: 0.011, recoilMax: 0.075,
+    spread: 0.010, spreadMoving: 0.035, recoil: 0.011, recoilMax: 0.030,
     reloadTime: 2.0, auto: true, range: 90, falloff: 0.62, kick: 0.035,
   },
   pistol: {
     id: 'pistol', name: 'DESERT EAGLE .50', magSize: 7, reserveMax: 56, rpm: 210, dmg: 54, headMul: 3.0,
-    spread: 0.010, spreadMoving: 0.034, recoil: 0.03, recoilMax: 0.12,
+    spread: 0.010, spreadMoving: 0.034, recoil: 0.03, recoilMax: 0.055,
     reloadTime: 1.7, auto: false, range: 80, falloff: 0.7, kick: 0.07,
   },
 };
@@ -36,6 +36,12 @@ export class Player {
     this.bobT = 0;
     this.recoilPitch = 0;
     this.recoilYaw = 0;
+    this.recoilHold = false;   // set by main.js while the trigger is down
+    // Where the view sat before the current burst started, and how much of the burst has not
+    // been paid back yet. The assist pulls the view back to that anchor instead of letting
+    // every shot ratchet it upward (see climbRecoil / the recovery block in update).
+    this._recoilAnchor = 0;
+    this._recoilDebt = 0;
     this.weapon = 'rifle';
     this.ammo = { rifle: { mag: 30, reserve: 150 }, pistol: { mag: 7, reserve: 28 } };
     this.reloading = false;
@@ -60,6 +66,7 @@ export class Player {
     this.ammo = { rifle: { mag: 30, reserve: 150 }, pistol: { mag: 7, reserve: 28 } };
     this.reloading = false; this.reloadT = 0; this.fireCd = 0;
     this.recoilPitch = 0; this.recoilYaw = 0;
+    this._recoilAnchor = this.pitch; this._recoilDebt = 0;
     this.stats = { kills: 0, heads: 0, shots: 0, hits: 0, score: 0 };
     this.dead = false;
     this.crouch = false;
@@ -73,6 +80,65 @@ export class Player {
     this.pitch -= dy;
     const lim = Math.PI / 2 - 0.02;
     this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
+    // Only the player's own downward drag clears recoil debt. Pitch alone cannot tell them
+    // apart: the climb itself raises pitch past the anchor, and reading that as "already
+    // pulled down" cancelled every shot's debt the frame it was booked.
+    if (dy > 0 && this._recoilDebt > 0) {
+      this._recoilDebt = Math.max(0, this._recoilDebt - dy);
+    }
+  }
+
+  /**
+   * One shot's worth of muzzle climb.
+   *
+   * A burst only nudges the view up and then straight back down; the crosshair must end a
+   * burst exactly where it started. Adding a permanent offset per shot cannot do that -- at
+   * 600rpm the offset arrives ten times a second while recovery drains it at a fixed rate,
+   * so sustained fire climbed without limit (about 0.9 deg/s, 17 deg over one magazine) and
+   * recovering the aim meant dragging the thumb down after every burst.
+   *
+   * So the climb is booked as debt against the pitch the burst started from. The view kicks
+   * up immediately -- that is the felt recoil -- and the debt is then paid back so the view
+   * returns to the anchor. recoilMax caps the total climb within one burst, so a long burst
+   * does not walk the crosshair up the screen.
+   */
+  climbRecoil(kick) {
+    if (this._recoilDebt <= 1e-5) this._recoilAnchor = this.pitch;
+    const room = Math.max(0, this.def.recoilMax - this._recoilDebt);
+    const add = Math.min(kick, room);
+    if (add <= 0) return;
+    this.pitch += add;
+    this._recoilDebt += add;
+    this.recoilPitch += add;      // drives the barrel kick, purely visual
+    this._recoilIdle = 0;
+  }
+
+  /**
+   * Give the climb back. Runs once per frame from update().
+   *
+   * While the trigger is down the view holds its climb -- that is the recoil the player feels.
+   * Once the trigger has been released for a moment the remaining climb is returned
+   * proportionally, so the crosshair lands back exactly where the burst began. Dragging down
+   * pays it off early (see look()), because then the player is re-aiming and the animation
+   * must not fight them.
+   */
+  _settleRecoil(dt, firing) {
+    if (this._recoilDebt <= 0) return;
+    const idle = firing ? 0 : (this._recoilIdle || 0) + dt;
+    this._recoilIdle = idle;
+    // While the trigger is down the view holds its climb: that is the recoil the player feels.
+    // Once it is released the remaining climb is returned proportionally, so the crosshair
+    // lands back where the burst began. The debt is capped by recoilMax, so this is bounded.
+    if (idle > 0.06) {
+      const pay = this._recoilDebt * Math.min(1, dt * 16);
+      this.pitch -= pay;
+      this._recoilDebt -= pay;
+    }
+    if (this._recoilDebt <= 1e-5) {
+      this._recoilDebt = 0;
+      this._recoilIdle = 0;
+      this._recoilAnchor = this.pitch;
+    }
   }
 
   update(dt, input, world) {
@@ -83,11 +149,11 @@ export class Player {
     this.look(lk.dx, lk.dy);
 
     // Recoil recovery
-    const rec = Math.min(1, dt * 7);
-    this.yaw += this.recoilYaw * rec;
-    this.pitch += this.recoilPitch * rec;
-    this.recoilYaw *= (1 - rec);
-    this.recoilPitch *= (1 - rec);
+    this.yaw += this.recoilYaw * Math.min(1, dt * 7);
+    this.recoilYaw *= 1 - Math.min(1, dt * 7);
+    this._settleRecoil(dt, this.recoilHold);
+    // The barrel kick decays on its own; the view has already been credited above
+    this.recoilPitch *= 1 - Math.min(1, dt * 9);
 
     // Crouch
     this.crouch = input.wantCrouch;

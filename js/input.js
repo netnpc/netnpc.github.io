@@ -8,10 +8,8 @@ export class Input {
     // Look motion is queued and released at the finger's own rate (see consumeLook)
     this._lookSpan = 0;        // seconds of finger motion waiting in the queue
     this._lookTPrev = 0;       // timestamp of the previous sample
-    // Noise gate state (see _accumLook): accumulated travel, and total movement seen
-    this._accX = 0; this._accY = 0; this._churn = 0;
-    this._gatePx = 5;          // px of net travel before anything is released
-    this._gateRatio = 0.6;     // fraction of total movement that must be net, not back-and-forth
+    // Noise gate state (see _accumLook): offset from the rest point the gate is armed around
+    this._restX = 0; this._restY = 0;
     this.firing = false;
     this.moveX = 0;      // -1..1, stick axis
     this.moveY = 0;
@@ -311,34 +309,32 @@ export class Input {
     // Applied directly, that noise turns the view by about a third of a degree and reads as a
     // slow drift while the thumb is merely resting on the glass.
     //
-    // Direction is the reliable signal: noise reverses almost every sample, so its net travel
-    // cancels out, while a deliberate drag keeps adding the same way. Net travel is compared
-    // against total travel, both decaying slowly so a long idle period cannot leave enough
-    // back-and-forth behind to block the next drag.
+    // The reliable difference between noise and a drag is not speed but *excursion*: panel
+    // jitter stays within a pixel or two of where it started and keeps coming back, while a
+    // deliberate drag walks away and does not return. So a "rest point" is kept, and nothing is
+    // released until the finger has left it by more than the noise radius. A drag then crosses
+    // that radius within its first few samples and runs at full weight; jitter never crosses it
+    // at all, so it produces exactly zero output however long the finger rests.
     //
-    // Crucially the gate must never *withhold* motion and dump it later: that is what makes a
-    // drag feel like it is catching up in lumps. Every sample is passed through, scaled by how
-    // trustworthy the last few samples were. Pure noise is scaled nearly to zero (invisible),
-    // and a drag is scaled by 1 the moment its direction holds, so the view tracks the thumb
-    // with no accumulated debt to pay off.
-    const DECAY = 0.9;
-    this._accX = this._accX * DECAY + cd;
-    this._accY = this._accY * DECAY + cdy;
-    this._churn = this._churn * DECAY + Math.abs(cd) + Math.abs(cdy);
+    // The rest point follows the finger (by the amount released) while a drag is in progress,
+    // so the gate does not keep re-arming and stalling partway through a turn. It only holds
+    // still once the finger has stopped leaving it, which is precisely the "resting" case.
+    const RAD = 2.5;                 // px: how far panel jitter wanders from its rest point
+    this._restX += cd;
+    this._restY += cdy;
+    const off = Math.hypot(this._restX, this._restY);
+    // Release everything that lies beyond the radius: the output is the finger's motion with
+    // the noise ball taken out, so a drag keeps its full travel instead of being scaled.
+    if (off <= RAD) return;
+    const over = (off - RAD) / off;
+    const outX = this._restX * over;
+    const outY = this._restY * over;
+    this._restX -= outX;
+    this._restY -= outY;
+    this._lookSpan += gap;           // seconds of finger motion currently queued
 
-    const net = Math.hypot(this._accX, this._accY);
-    // 0 when the movement is pure noise, 1 when it is entirely one direction.
-    const consistency = net / Math.max(1e-6, this._churn);
-    // Suppress below the noise floor, pass everything once the direction is clearly held.
-    // Smoothstep in between, so the transition itself cannot introduce a step.
-    const k = Math.min(1, Math.max(0, (consistency - 0.55) / 0.35));
-    const gain = k * k * (3 - 2 * k);
-
-    if (gain <= 0.002) return;      // pure noise: nothing at all reaches the view
-
-    this.lookDX += cd * s * gain;
-    this.lookDY += cdy * s * gain;
-    this._lookSpan += gap;          // seconds of finger motion currently queued
+    this.lookDX += outX * s;
+    this.lookDY += outY * s;
   }
 
   /** When touchmove is lost (finger flung off screen), a synthetic event fills in the last stretch of movement */
@@ -347,7 +343,7 @@ export class Input {
     this._touchLookId = null;
     this._lookTPrev = 0;
     // A fresh press starts with no history, so a leftover accumulation cannot leak into it
-    this._accX = 0; this._accY = 0; this._churn = 0;
+    this._restX = 0; this._restY = 0;
     // Any motion still queued at this point is at most a frame's worth and is released on the
     // next frame: dropping it here would clip the end of every drag. The queue is capped by
     // the per-sample gap clamp, so it cannot grow into a jump even if this never runs.
@@ -404,9 +400,12 @@ export class Input {
       this.lookDX *= keep; this.lookDY *= keep;
       this._lookSpan = MAX_SPAN;
     }
+    // Release everything queued once the queue is no longer than a frame, otherwise the view
+    // runs permanently one frame behind the finger. Earlier this always held back a frame's
+    // worth to absorb clock drift, which is exactly the latency that reads as "does not keep
+    // up". Anything older than a frame is still released proportionally.
     let f = 1;
-    if (this._lookSpan > 1e-6) {
-      // Release one frame's worth, but never more than what is queued
+    if (this._lookSpan > frame + 1e-6) {
       f = Math.min(1, frame / this._lookSpan);
     }
     const dx = this.lookDX * f;
@@ -435,10 +434,14 @@ export class Input {
    */
   syncTouchSens() {
     const w = window.innerWidth || 400;
-    // 0.42 screen widths maps to pi radians, so base = pi / (0.42 * w)
-    // A little steadier than the old 0.34: at 844px landscape a 180 degree turn takes about 354px of drag
-    const base = Math.PI / (0.42 * w);
-    this._touchBase = Math.max(0.0040, Math.min(0.024, base));
+    // 0.30 screen widths maps to pi radians, so base = pi / (0.30 * w).
+    // Measured against how far a thumb actually travels: a comfortable single swipe is about
+    // 200-250px, but 0.42 screen widths demanded 355px on an 844px landscape phone, so turning
+    // to face an enemy behind you needed the finger dragged to the very edge of the glass.
+    // That is what read as "does not keep up with my finger". 0.30 brings it to about 253px,
+    // one comfortable swipe for half a turn, while still far from twitchy.
+    const base = Math.PI / (0.30 * w);
+    this._touchBase = Math.max(0.0060, Math.min(0.030, base));
   }
   consumeFlag(name) {
     if (this[name]) { this[name] = false; return true; }
