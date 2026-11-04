@@ -8,6 +8,10 @@ export class Input {
     // Look motion is queued and released at the finger's own rate (see consumeLook)
     this._lookSpan = 0;        // seconds of finger motion waiting in the queue
     this._lookTPrev = 0;       // timestamp of the previous sample
+    // Noise gate state (see _accumLook): accumulated travel, and total movement seen
+    this._accX = 0; this._accY = 0; this._churn = 0;
+    this._gatePx = 5;          // px of net travel before anything is released
+    this._gateRatio = 0.6;     // fraction of total movement that must be net, not back-and-forth
     this.firing = false;
     this.moveX = 0;      // -1..1, stick axis
     this.moveY = 0;
@@ -302,8 +306,34 @@ export class Input {
       ? Math.min(MAX_GAP, Math.max(MIN_GAP, (now - this._lookTPrev) / 1000))
       : MIN_GAP;
     this._lookTPrev = now;
-    this.lookDX += cd * s;
-    this.lookDY += cdy * s;
+
+    // [Noise gate] A resting finger still reports a few pixels of panel noise every sample.
+    // Applied directly, that noise turns the view by about a third of a degree and reads as a
+    // slow drift while the thumb is merely resting on the glass.
+    //
+    // Speed cannot be measured reliably here: sample timestamps are irregular and a busy frame
+    // can deliver a burst in one millisecond. The ratio of net travel to total travel is the
+    // reliable signal. Noise reverses constantly, so its net stays near zero while the total
+    // keeps climbing; a deliberate drag keeps adding one way, so the net tracks the total.
+    // Both accumulators decay, so the gate always recovers: a long idle period cannot leave
+    // enough back-and-forth behind to block the next real drag.
+    const DECAY = 0.985;
+    this._accX = this._accX * DECAY + cd;
+    this._accY = this._accY * DECAY + cdy;
+    this._churn = this._churn * DECAY + Math.abs(cd) + Math.abs(cdy);
+
+    const net = Math.hypot(this._accX, this._accY);
+    if (net < this._gatePx || net < this._churn * this._gateRatio) {
+      // Too little net travel, or too much back-and-forth for the net to mean anything.
+      // Nothing is released and no time is claimed, so the queue cannot grow while idle.
+      return;
+    }
+
+    const mx = this._accX, my = this._accY;
+    this._accX = 0; this._accY = 0; this._churn = 0;
+
+    this.lookDX += mx * s;
+    this.lookDY += my * s;
     this._lookSpan += gap;          // seconds of finger motion currently queued
   }
 
@@ -312,6 +342,8 @@ export class Input {
     this.lookPtr = null;
     this._touchLookId = null;
     this._lookTPrev = 0;
+    // A fresh press starts with no history, so a leftover accumulation cannot leak into it
+    this._accX = 0; this._accY = 0; this._churn = 0;
     // Any motion still queued at this point is at most a frame's worth and is released on the
     // next frame: dropping it here would clip the end of every drag. The queue is capped by
     // the per-sample gap clamp, so it cannot grow into a jump even if this never runs.
