@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261104164418';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261104164418';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261104164418';
-import { HUD } from './ui.js?v=20261104164418';
-import { Input } from './input.js?v=20261104164418';
-import { Sfx } from './audio.js?v=20261104164418';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104164418';
+import * as THREE from '../vendor/three.module.min.js?v=20261104165027';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261104165027';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261104165027';
+import { HUD } from './ui.js?v=20261104165027';
+import { Input } from './input.js?v=20261104165027';
+import { Sfx } from './audio.js?v=20261104165027';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104165027';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -24,12 +24,15 @@ class Game {
   constructor() {
     this.settings = {
       sens: (() => {
-        // One-time migration: the look baseline was recalibrated so that the slider position
-        // the tester had settled on (0.7) is now exactly 1.00. Anyone carrying the old 0.7
-        // setting would otherwise get that feel twice -- once in the baseline and once in
-        // their stored value -- and find the view sluggish after the update.
+        // One-time migration: the look baseline was recalibrated to 0.34 screen widths per
+        // half turn, which is exactly the feel the tester dialled in with the old slider.
+        // Values stored under the old baselines (0.42 / 0.30 / 0.24 screen widths) were all
+        // below 1.0 while searching for that feel -- 0.7, 0.75 and the like -- and applying
+        // one of them on top of the new baseline would double-slow the view. Anything below
+        // 1.0 left over from that search is reset; a deliberate choice made under the new
+        // baseline can simply be set again on the slider.
         const v = parseFloat(localStorage.getItem('zs_sens') || '1');
-        if (Math.abs(v - 0.7) < 0.005) { localStorage.removeItem('zs_sens'); return 1; }
+        if (v < 1) { localStorage.removeItem('zs_sens'); return 1; }
         return v;
       })(),
       fov: parseInt(localStorage.getItem('zs_fov') || '85'),
