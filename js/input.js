@@ -292,8 +292,15 @@ export class Input {
     const s = this._touchBase * this.sens;
     const now = performance.now();
     // How much time this batch of motion represents: the gap since the previous sample.
-    // Clamped so a stalled tab or a resumed finger cannot inject a huge backlog.
-    const gap = this._lookTPrev ? Math.min(0.05, Math.max(0.001, (now - this._lookTPrev) / 1000)) : 0.008;
+    // Bounded on both sides. The lower bound is a quarter frame: a pointer can never report
+    // faster than 240Hz, and without it a burst of samples delivered in the same millisecond
+    // would claim almost no elapsed time, so the queue would look shorter than one frame and
+    // consumeLook() would dump the entire batch in a single frame. The upper bound stops a
+    // backgrounded tab or a finger that stopped and resumed from injecting a huge backlog.
+    const MIN_GAP = 0.004, MAX_GAP = 0.05;
+    const gap = this._lookTPrev
+      ? Math.min(MAX_GAP, Math.max(MIN_GAP, (now - this._lookTPrev) / 1000))
+      : MIN_GAP;
     this._lookTPrev = now;
     this.lookDX += cd * s;
     this.lookDY += cdy * s;
@@ -353,6 +360,14 @@ export class Input {
    */
   consumeLook(dt) {
     const frame = dt || 1 / 60;
+    // Cap the backlog at a few frames. If the page was throttled or the finger stopped for a
+    // moment, a long queue would otherwise be dumped as one violent swipe when it resumes.
+    const MAX_SPAN = frame * 3;
+    if (this._lookSpan > MAX_SPAN) {
+      const keep = MAX_SPAN / this._lookSpan;
+      this.lookDX *= keep; this.lookDY *= keep;
+      this._lookSpan = MAX_SPAN;
+    }
     let f = 1;
     if (this._lookSpan > 1e-6) {
       // Release one frame's worth, but never more than what is queued
