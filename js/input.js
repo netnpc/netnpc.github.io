@@ -462,15 +462,14 @@ export class Input {
    */
   syncTouchSens() {
     const w = window.innerWidth || 400;
-    // 0.24 screen widths maps to pi radians, so base = pi / (0.24 * w).
+    // 0.34 screen widths maps to pi radians, so base = pi / (0.34 * w).
     //
-    // Tuned against how far a thumb actually travels. A comfortable single swipe is about
-    // 200-250px; the original 0.42 screen widths demanded 355px on an 844px landscape phone,
-    // and 0.30 still needed 307px. Both felt heavy -- a correction that should be a short flick
-    // turned into a full sweep of the glass. 0.24 brings a half turn to about 203px, one easy
-    // swipe, which is the range a thumb naturally covers without repositioning.
+    // Tuned by feel: 0.24 screen widths (203px per half turn on an 844px phone) was slightly
+    // too twitchy -- the tester settled on the 0.7 slider position, which is this value. At
+    // 0.34 a half turn takes about 290px on that phone: one full thumb sweep rather than a
+    // flick, with finer control over small corrections. The slider at 1.00 is this baseline.
     // The floor and ceiling keep this sane on very narrow and very wide screens.
-    const base = Math.PI / (0.24 * w);
+    const base = Math.PI / (0.34 * w);
     this._touchBase = Math.max(0.0075, Math.min(0.034, base));
   }
   consumeFlag(name) {
