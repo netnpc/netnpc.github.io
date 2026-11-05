@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261105041531';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261105041531';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261105041531';
-import { HUD } from './ui.js?v=20261105041531';
-import { Input } from './input.js?v=20261105041531';
-import { Sfx } from './audio.js?v=20261105041531';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261105041531';
+import * as THREE from '../vendor/three.module.min.js?v=20261105051613';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261105051613';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261105051613';
+import { HUD } from './ui.js?v=20261105051613';
+import { Input } from './input.js?v=20261105051613';
+import { Sfx } from './audio.js?v=20261105051613';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261105051613';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1551,11 +1551,13 @@ class Game {
     // The ramp also depends on the player actually turning (see `engage` below), so it
     // fades out when the thumb stops rather than staying primed at full strength. Otherwise
     // the next small movement would be met with an instant, full-power pull.
-    // The thresholds are in degrees per second of the player's own turning, measured from
-    // real drags: a careful micro-correction is about 60 deg/s, a normal aim-adjust about
-    // 250 deg/s, a fast flick 600+. Below 25 deg/s the thumb is effectively resting, so the
-    // assist is fully off; by 120 deg/s it is fully on. Anything in between fades in smoothly.
-    const TURN_MIN = 25, TURN_FULL = 120;
+    // The thresholds are in degrees per second of the player's own turning. They are set low
+    // on purpose: the case that must never pull is a thumb genuinely at rest, and that reads
+    // as a few deg/s at most once the look input's noise floor has been subtracted. Any
+    // deliberate drag clears 30 deg/s. A high floor (an earlier 25/120) cut most of the help
+    // out of exactly the slow micro-corrections aiming consists of, which made the assist feel
+    // much weaker than before.
+    const TURN_MIN = 12, TURN_FULL = 70;
     const dps = this.input.turnDPS || 0;
     let engage = (dps - TURN_MIN) / (TURN_FULL - TURN_MIN);
     engage = Math.min(1, Math.max(0, engage));
