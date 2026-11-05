@@ -1,5 +1,5 @@
 // Procedural textures and model generation (no external assets)
-import * as THREE from '../vendor/three.module.min.js?v=20261104171821';
+import * as THREE from '../vendor/three.module.min.js?v=20261105041531';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const cvs = (size = 256) => {

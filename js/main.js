@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261104171821';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261104171821';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261104171821';
-import { HUD } from './ui.js?v=20261104171821';
-import { Input } from './input.js?v=20261104171821';
-import { Sfx } from './audio.js?v=20261104171821';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261104171821';
+import * as THREE from '../vendor/three.module.min.js?v=20261105041531';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261105041531';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261105041531';
+import { HUD } from './ui.js?v=20261105041531';
+import { Input } from './input.js?v=20261105041531';
+import { Sfx } from './audio.js?v=20261105041531';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261105041531';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1547,13 +1547,29 @@ class Game {
     // [Fade in/out] The lock factor hold ramps smoothly from 0 to 1 (about 0.2s),
     // and back to 0 on losing the target (about 0.12s). Without it, every entry and
     // exit of the capture radius snapped the pull on and off and the view stuttered.
-    if (bestE) {
+    //
+    // The ramp also depends on the player actually turning (see `engage` below), so it
+    // fades out when the thumb stops rather than staying primed at full strength. Otherwise
+    // the next small movement would be met with an instant, full-power pull.
+    // The thresholds are in degrees per second of the player's own turning, measured from
+    // real drags: a careful micro-correction is about 60 deg/s, a normal aim-adjust about
+    // 250 deg/s, a fast flick 600+. Below 25 deg/s the thumb is effectively resting, so the
+    // assist is fully off; by 120 deg/s it is fully on. Anything in between fades in smoothly.
+    const TURN_MIN = 25, TURN_FULL = 120;
+    const dps = this.input.turnDPS || 0;
+    let engage = (dps - TURN_MIN) / (TURN_FULL - TURN_MIN);
+    engage = Math.min(1, Math.max(0, engage));
+    engage = engage * engage * (3 - 2 * engage);   // smoothstep: no step at the threshold
+    const active = !!bestE && engage > 0;
+
+    if (active) {
       this._aaHold = Math.min(1, (this._aaHold || 0) + dt / 0.2);
       this._aaLast = bestE;
     } else {
-      this._aaHold = Math.max(0, (this._aaHold || 0) - dt / 0.12);
-      this._aaLast = null;
-      return;   // no new dyaw after losing the target; residual pull fades with hold
+      this._aaHold = Math.max(0, (this._aaHold || 0) - dt / 0.08);
+      if (!bestE) this._aaLast = null;
+      if (engage <= 0) { this.aimTarget = null; return; }   // thumb at rest: view must not move
+      return;
     }
     // smoothstep so both ends of the fade are gentler
     const h = this._aaHold;
@@ -1575,15 +1591,25 @@ class Game {
     // Pull strength: full at the centre, weaker toward the edge (quadratic, smoothly zero at the boundary)
     const t = Math.min(1, dist / maxAng);
     const edge = 1 - t * t;
-    // Weaken the pull while the player is actively turning, so it never fights them
-    const looking = Math.min(1, Math.hypot(this.input.lastLookDX || 0, this.input.lastLookDY || 0) / 6);
+
+    // [Only pull while the player is turning] The assist exists to help a thumb stop on a
+    // target, not to aim for the player. If the thumb is resting the view must not move at all,
+    // however close an enemy is: otherwise the crosshair slides onto a target on its own and
+    // the player loses the sense that they are aiming.
+    //
+    // `engage` is the fade-in from the player's own turning speed (computed above). Below
+    // TURN_MIN the assist is completely off; between TURN_MIN and TURN_FULL it fades in, so a
+    // gentle correction gets most of the help and a fast flick gets all of it. This replaces
+    // the old `looking` term, which divided radians per frame by 6 and therefore read about
+    // 0.01 -- it never actually engaged.
+    //
     // [Auto-fire damping] Pull drops to 30% for 0.25s after a shot, then recovers linearly.
     // Recoil kicks the view up and the assist pulls it back, two forces fighting on every bullet,
     // which made full-auto fire jitter at high frequency; yielding to recoil removes it.
     const fireT = this._aaFireT !== undefined ? performance.now() / 1000 - this._aaFireT : 99;
     const fireK = fireT < 0.25 ? 0.35 + 0.65 * (fireT / 0.25) : 1;
 
-    const strength = cfg.strength * edge * (1 - 0.55 * looking) * holdK * fireK;
+    const strength = cfg.strength * edge * engage * holdK * fireK;
 
     // Smooth approach (exponential convergence); larger rate pulls faster
     const s = 1 - Math.exp(-cfg.rate * strength * dt);

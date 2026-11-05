@@ -448,10 +448,20 @@ export class Input {
       this.lookDX = 0; this.lookDY = 0; this._lookSpan = 0;
     }
 
-    // Lets aim assist tell whether the player is actively turning right now:
-    // The harder the turn, the weaker the pull, so assist never fights the player.
+    // Lets aim assist tell whether the player is actively turning right now. The assist may
+    // only pull while the player is turning the view themselves: a resting thumb must leave the
+    // view completely alone, or the crosshair walks toward an enemy on its own.
+    //
+    // `dx`/`dy` are already scaled by the sensitivity, so dividing by the frame time gives the
+    // view's true angular speed in radians per second. The old "is the player turning" term
+    // used raw radians per frame against a fixed divisor, which read about 0.01 and never
+    // engaged at all.
     this.lastLookDX = dx;
     this.lastLookDY = dy;
+    const dps = Math.hypot(dx, dy) / Math.max(1e-4, frame) * 180 / Math.PI;
+    // Smoothed over a couple of frames so a slow turn does not flicker on and off between
+    // samples, but short enough that lifting the thumb stops the pull immediately.
+    this.turnDPS = (this.turnDPS || 0) * 0.5 + dps * 0.5;
     return { dx, dy };
   }
 
