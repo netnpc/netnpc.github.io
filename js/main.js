@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261105075134';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261105075134';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261105075134';
-import { HUD } from './ui.js?v=20261105075134';
-import { Input } from './input.js?v=20261105075134';
-import { Sfx } from './audio.js?v=20261105075134';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261105075134';
+import * as THREE from '../vendor/three.module.min.js?v=20261105141655';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261105141655';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261105141655';
+import { HUD } from './ui.js?v=20261105141655';
+import { Input } from './input.js?v=20261105141655';
+import { Sfx } from './audio.js?v=20261105141655';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261105141655';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -43,17 +43,26 @@ class Game {
       // exactly on an enemy, so the view is nudged toward one when the crosshair gets close.
       //   · No settings toggle: fixed per device -- on for touch, off for mouse
       //     (a mouse is already precise; assist just feels sticky there).
-      //   · maxAngle: capture radius in degrees, measured from screen centre
+      //   · maxAngle: capture radius in degrees (half-angle of a cone, i.e. measured from
+      //     screen centre whichever way you count), used as an upper bound; the radius that
+      //     actually applies is solved per target so it covers a fixed physical width on
+      //     screen -- see `radiusFor` in updateAimAssist
       //   · strength: peak pull, 0..1, falling off quadratically with angular error
       //   · rate: convergence speed (higher feels faster and stiffer)
-      //   · headRatio: aim for the head only inside maxAngle * this
+      //   · headRatio: aim for the head only inside the target's radius * this
+      //     (a fraction of the *person's* radius, not of maxAngle -- those differ at range)
+      //   · dragShare: how much of the player's own turning the pull may cancel in one frame
+      //     (the cap that keeps the view from feeling glued)
       // Tuning history: 0.85 (too strong) -> 0.45 (too weak) -> 0.68 (current, in between)
       aimAssist: {
         on: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
-        maxAngle: 6,
+        maxAngle: 8,          // degrees, ceiling of the per-target radius (2.4m at 17m)
+        minAngle: 1.2,        // degrees, floor so distant targets stay hittable
+        coverM: 2.4,          // radius in metres of body height / movement that is covered
         strength: 0.68,
-        rate: 17,
+        rate: 24,
         headRatio: 0.42,
+        dragShare: 0.28,
       },
     };
     this.state = 'menu'; // menu | playing | paused | end
@@ -1510,14 +1519,21 @@ class Game {
     // Current view direction
     _aaDir.set(0, 0, -1).applyEuler(_aaEuler.set(p.pitch, p.yaw, 0, 'YXZ'));
 
-    const maxAng = cfg.maxAngle * Math.PI / 180;   // capture radius in radians
-    // [Hysteresis] A target locked last frame gets a 1.35x wider effective radius.
-    // Without it, an enemy moving near the maxAngle boundary enters and leaves on alternate frames,
-    // and the pull switches on-off-on, which is one of the main sources of camera judder.
+    const maxAng = cfg.maxAngle * Math.PI / 180;   // ceiling of the per-target capture radius
+    const minAng = (cfg.minAngle || 0) * Math.PI / 180;
+    // [Range-independent radius] A fixed angular radius makes the assist behave completely
+    // differently near and far. A person is 22.6 deg tall at 4m and 2.3 deg at 40m, so a 6 deg
+    // radius is a quarter of a body up close and 2.6 bodies at range: far targets got stuck in
+    // a wide field where the pull kept pretending to help, and stopping on a small silhouette
+    // was still left to the thumb. The radius is therefore solved from a fixed physical size
+    // (`coverM`, in body heights), clamped to [minAngle, maxAngle] so nothing degenerates.
+    const coverM = cfg.coverM || 2.4;
+    const radiusFor = (d) => Math.max(minAng, Math.min(maxAng, Math.atan(coverM / Math.max(0.5, d))));
+    // Whether the pull is engaged this frame is decided below (see `engage`); this only says
+    // "no live target at all", which is what clears the lock.
     const last = this._aaLast;
-    const effMax = (e) => (e && e === last ? maxAng * 1.35 : maxAng);
 
-    let bestE = null, bestAng = Infinity, bestHead = false;
+    let bestE = null, bestAng = Infinity, bestHead = false, bestRad = maxAng;
 
     for (const e of this.enemies) {
       if (e.dead) continue;
@@ -1531,17 +1547,20 @@ class Game {
       // Skip targets behind walls (pulling through a wall is baffling)
       // Note: length must be non-zero before normalize, or NaN poisons the whole assist
       _aaV1.normalize(); _aaV2.normalize();
-      const lim = effMax(e);
+      // [Hysteresis] A target locked last frame gets a 1.5x wider radius. Without it, an enemy
+      // moving near the boundary enters and leaves on alternate frames and the pull switches
+      // on-off-on, which is one of the main sources of camera judder.
+      const rad = radiusFor(d1) * (e === last ? 1.5 : 1);
       const a1 = Math.acos(Math.max(-1, Math.min(1, _aaV1.dot(_aaDir))));
-      if (a1 > lim) continue;
+      if (a1 > rad) continue;
       const hit = this.world.raycast(eye, _aaV1, d1);
       if (hit) continue;                                        // wall in the way
 
       const a2 = Math.acos(Math.max(-1, Math.min(1, _aaV2.dot(_aaDir))));
-      // Head pull is stricter: only when the crosshair is already close to the head (lim * headRatio)
+      // Head pull is stricter: only when the crosshair is already close to the head (rad * headRatio)
       let ang = a1, head = false;
-      if (a2 < lim * cfg.headRatio) { ang = a2 * 0.5; head = true; }
-      if (ang < bestAng) { bestAng = ang; bestE = e; bestHead = head; }
+      if (a2 < rad * cfg.headRatio) { ang = a2 * 0.5; head = true; }
+      if (ang < bestAng) { bestAng = ang; bestE = e; bestHead = head; bestRad = rad; }
     }
 
     // [Fade in/out] The lock factor hold ramps smoothly from 0 to 1 (about 0.2s),
@@ -1590,8 +1609,11 @@ class Game {
     const dpitch = targetPitch - p.pitch;
     const dist = Math.hypot(dyaw, dpitch);
 
-    // Pull strength: full at the centre, weaker toward the edge (quadratic, smoothly zero at the boundary)
-    const t = Math.min(1, dist / maxAng);
+    // Pull strength: full at the centre, weaker toward the edge (quadratic, smoothly zero at the boundary).
+    // The boundary is this target's own radius, so a distant target does not sit at high strength
+    // over a wide field: inside a radius that already hugs the silhouette the pull ramps down
+    // only near the edge, which keeps a small target easy to hold on to.
+    const t = Math.min(1, dist / bestRad);
     const edge = 1 - t * t;
 
     // [Only pull while the player is turning] The assist exists to help a thumb stop on a
@@ -1615,14 +1637,38 @@ class Game {
 
     // Smooth approach (exponential convergence); larger rate pulls faster
     const s = 1 - Math.exp(-cfg.rate * strength * dt);
-    p.yaw += dyaw * s;
-    const dp = dpitch * s;
-    p.pitch += dp;
+
+    // [Drag cap] The convergence step is measured against the whole error, so near the centre
+    // it grows faster than the player can move: with a 4 deg error and a full-strength step the
+    // pull claims about 0.4 deg per frame, a fifth of a normal 2 deg/frame drag. The net motion
+    // of the view then becomes a fraction of the thumb's, and a view that moves less than the
+    // finger does is exactly what reads as stickiness ("glued").
+    //
+    // So the pull may cancel at most `dragShare` (28%) of what the player moved this frame,
+    // measured per axis and only on the sign that opposes them. Turning faster raises the
+    // ceiling, which is why a flick is not slowed at all; a slow correction is where the pull
+    // does its work, and there the cap only trims it. This caps *cancellation*, not help: when
+    // the player is already moving toward the target the pull only adds, so the assist gets
+    // more visible rather than less. (Capping at 60% of the thumb's motion felt like trying to
+    // aim through syrup -- the pull took over more than a third of the gesture.)
+    const lookX = this.input.lastLookDX || 0;   // radians this frame, player's own motion
+    const lookY = this.input.lastLookDY || 0;
+    const capShare = cfg.dragShare === undefined ? 0.28 : cfg.dragShare;
+    // yaw grows opposite to lookDX (look() does yaw -= dx), pitch opposite to lookDY
+    const pullYaw = dyaw * s, pullPitch = dpitch * s;
+    const capYaw = Math.abs(lookX) * capShare;
+    const capPitch = Math.abs(lookY) * capShare;
+    const limYaw = (pullYaw * lookX < 0) ? Math.min(Math.abs(pullYaw), capYaw) : Math.abs(pullYaw);
+    const limPitch = (pullPitch * lookY < 0) ? Math.min(Math.abs(pullPitch), capPitch) : Math.abs(pullPitch);
+    const pYaw = Math.sign(pullYaw) * limYaw;
+    const pPitch = Math.sign(pullPitch) * limPitch;
+    p.yaw += pYaw;
+    p.pitch += pPitch;
     // The assist's own downward correction counts as paying the recoil back, and its upward
     // correction as adding to it. Otherwise the pull moves the view off the burst anchor while
     // the recoil model still believes the anchor holds, and releasing the trigger would drag
     // the view back to a stale angle.
-    if (p._recoilDebt > 0 && dp < 0) p._recoilDebt = Math.max(0, p._recoilDebt + dp);
+    if (p._recoilDebt > 0 && pPitch < 0) p._recoilDebt = Math.max(0, p._recoilDebt + pPitch);
     // Clamp back to the pitch limit
     const limP = Math.PI / 2 - 0.05;
     p.pitch = Math.max(-limP, Math.min(limP, p.pitch));
