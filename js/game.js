@@ -1,7 +1,7 @@
 // Player / enemy / weapon / round logic
-import * as THREE from '../vendor/three.module.min.js?v=20261105141655';
-import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261105141655';
-import { rayCapsule, ARENA } from './world.js?v=20261105141655';
+import * as THREE from '../vendor/three.module.min.js?v=20261105154138';
+import { buildRifle, buildPistol, buildSoldier, flashTexture } from './assets.js?v=20261105154138';
+import { rayCapsule, ARENA } from './world.js?v=20261105154138';
 
 export const WEAPONS = {
   rifle: {
@@ -170,14 +170,17 @@ export class Player {
     // Forward is (-sin, -cos), right is (cos, -sin)
     const wishX = (-sinY * ax.y + cosY * ax.x) * speed;
     const wishZ = (-cosY * ax.y - sinY * ax.x) * speed;
-    // Launch acceleration: coasting after releasing the stick keeps the original damping of 22 (so the player still slides a little),
-    // but from a standstill the early part of an exponential approach is too slow, so pushing the stick had noticeable lag.
-    // Below half the target speed the acceleration is now 55, reaching half speed in about 13ms
-    // and then returning to 22 to converge smoothly on full speed. Only the start is affected, not the coast.
+    // Launch acceleration: the response profile is two-stage. Reaching *half* speed was never
+    // the problem (12.6ms at the old values); the second half was -- the base 22 climbs from
+    // 75% to 95% of target speed in over 100ms, and that lingering shortfall is what reads as
+    // lag when strafing into a fight. So the launch kick is deeper (90 to 60% of target speed,
+    // about 10ms) and the cruising acceleration is raised 22 -> 34, cutting the whole run to
+    // 95% by about 40%. Coasting after releasing the stick keeps the old 22 so the glide
+    // distance is unchanged.
     const wishLen = Math.hypot(wishX, wishZ);
     const spNow = Math.hypot(this.vel.x, this.vel.z);
-    let accel = this.onGround ? 22 : 4.2;
-    if (this.onGround && wishLen > 0.1 && spNow < wishLen * 0.5) accel = 55;
+    let accel = this.onGround ? 34 : 4.2;
+    if (this.onGround && wishLen > 0.1 && spNow < wishLen * 0.6) accel = 90;
     this.vel.x += (wishX - this.vel.x) * Math.min(1, accel * dt);
     this.vel.z += (wishZ - this.vel.z) * Math.min(1, accel * dt);
 
