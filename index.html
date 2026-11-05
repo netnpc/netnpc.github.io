@@ -122,7 +122,6 @@
         <tr><td>Move</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Left stick</td></tr>
         <tr><td>Aim / Look</td><td>Mouse</td><td>Drag anywhere</td></tr>
         <tr><td>Fire</td><td>Left click</td><td>FIRE button</td></tr>
-        <tr><td>Aim down sights</td><td>Right click</td><td>—</td></tr>
         <tr><td>Reload</td><td><kbd>R</kbd></td><td>⟳ button</td></tr>
         <tr><td>Switch weapon</td><td><kbd>1</kbd><kbd>2</kbd> / Wheel</td><td>⇄ button</td></tr>
         <tr><td>Sprint / Jump / Crouch</td><td><kbd>Shift</kbd> · <kbd>Space</kbd> · <kbd>Ctrl</kbd></td><td>⤒ button</td></tr>
@@ -191,14 +190,14 @@
   Build stamp: rewritten automatically on every commit (see .githooks/pre-commit).
   Purpose: defeat browser / CDN caching of static assets.
   The js files import each other as ES modules, and imports are static -- they
-  cannot take a runtime parameter -- so every from './xxx.js?v=20261105051613' inside
+  cannot take a runtime parameter -- so every from './xxx.js?v=20261105075134' inside
   js/*.js is rewritten to the same stamp.
   Without this, GitHub Pages serves js with `cache-control: max-age=600`, and
   phones keep running the old build for up to 10 minutes after a change --
   which looks exactly like "I changed it but nothing happened".
 -->
-<script>window.__BUILD__ = '20261105051613';</script>
-<script type="module" src="js/main.js?v=20261105051613"></script>
+<script>window.__BUILD__ = '20261105075134';</script>
+<script type="module" src="js/main.js?v=20261105075134"></script>
 <script>
   // Service worker: network-first for the page, so a new deployment shows up on
   // the next reload instead of when the 10-minute page cache expires. Registered
