@@ -1,11 +1,11 @@
 // Main game: rendering, shooting, round flow, UI wiring
-import * as THREE from '../vendor/three.module.min.js?v=20261105154138';
-import { World, ARENA, MAPS, getMap } from './world.js?v=20261105154138';
-import { Player, Enemy, WEAPONS } from './game.js?v=20261105154138';
-import { HUD } from './ui.js?v=20261105154138';
-import { Input } from './input.js?v=20261105154138';
-import { Sfx } from './audio.js?v=20261105154138';
-import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261105154138';
+import * as THREE from '../vendor/three.module.min.js?v=20261107114201';
+import { World, ARENA, MAPS, getMap } from './world.js?v=20261107114201';
+import { Player, Enemy, WEAPONS } from './game.js?v=20261107114201';
+import { HUD } from './ui.js?v=20261107114201';
+import { Input } from './input.js?v=20261107114201';
+import { Sfx } from './audio.js?v=20261107114201';
+import { buildRifle, buildPistol, flashTexture, streakTexture } from './assets.js?v=20261107114201';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -56,11 +56,11 @@ class Game {
       // Tuning history: 0.85 (too strong) -> 0.45 (too weak) -> 0.68 (current, in between)
       aimAssist: {
         on: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
-        maxAngle: 8,          // degrees, ceiling of the per-target radius (2.4m at 17m)
-        minAngle: 1.2,        // degrees, floor so distant targets stay hittable
-        coverM: 2.4,          // radius in metres of body height / movement that is covered
-        strength: 0.68,
-        rate: 24,
+        maxAngle: 9,          // degrees, ceiling of the per-target radius
+        minAngle: 1.8,        // degrees, floor so distant targets stay hittable
+        coverM: 3.2,          // radius in metres of body height / movement that is covered
+        strength: 0.82,
+        rate: 26,
         headRatio: 0.42,
         dragShare: 0.28,
       },
@@ -1576,7 +1576,7 @@ class Game {
     // deliberate drag clears 30 deg/s. A high floor (an earlier 25/120) cut most of the help
     // out of exactly the slow micro-corrections aiming consists of, which made the assist feel
     // much weaker than before.
-    const TURN_MIN = 12, TURN_FULL = 70;
+    const TURN_MIN = 9, TURN_FULL = 60;
     const dps = this.input.turnDPS || 0;
     let engage = (dps - TURN_MIN) / (TURN_FULL - TURN_MIN);
     engage = Math.min(1, Math.max(0, engage));
@@ -1609,11 +1609,14 @@ class Game {
     const dpitch = targetPitch - p.pitch;
     const dist = Math.hypot(dyaw, dpitch);
 
-    // Pull strength: full at the centre, weaker toward the edge (quadratic, smoothly zero at the boundary).
-    // The boundary is this target's own radius, so a distant target does not sit at high strength
-    // over a wide field: inside a radius that already hugs the silhouette the pull ramps down
-    // only near the edge, which keeps a small target easy to hold on to.
-    const t = Math.min(1, dist / bestRad);
+    // Pull strength: full at the centre, weaker toward the edge (quadratic).
+    // The falloff is measured against the *ceiling* radius (maxAngle), not this target's own
+    // smaller radius: measuring against the per-target radius quietly made distant targets
+    // weaker -- a 2 deg offset is 58% of a 3.4 deg far radius (edge 0.66) but only 25% of an
+    // 8 deg near radius (edge 0.94), so the far pull was 70% of the near one and small
+    // silhouettes were that much harder to stop on. Against the ceiling the falloff curve is
+    // the same shape at any range, and the per-target radius only decides where capture ends.
+    const t = Math.min(1, dist / maxAng);
     const edge = 1 - t * t;
 
     // [Only pull while the player is turning] The assist exists to help a thumb stop on a
